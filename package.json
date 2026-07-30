@@ -1,0 +1,61 @@
+{
+  "name": "sunat-see-service",
+  "version": "1.0.0",
+  "description": "Microservicio multitenant de emisión electrónica SUNAT (SEE Del Contribuyente)",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').copyFileSync('src/db/schema.sql','dist/db/schema.sql');require('fs').copyFileSync('src/http/routes/backoffice.html','dist/http/routes/backoffice.html')\"",
+    "start": "node dist/index.js",
+    "start:worker": "node dist/worker.js",
+    "dev": "node --experimental-strip-types --watch src/index.ts",
+    "dev:worker": "node --experimental-strip-types --watch src/worker.ts",
+    "migrate": "node --experimental-strip-types src/index.ts --migrate",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.5.1",
+      "onFail": "download"
+    }
+  },
+  "type": "module",
+  "dependencies": {
+    "@fastify/jwt": "^10.2.1",
+    "@fastify/multipart": "^10.1.0",
+    "@fastify/swagger": "^9.8.1",
+    "@fastify/swagger-ui": "^6.1.1",
+    "@xmldom/xmldom": "^0.9.10",
+    "bullmq": "^5.81.2",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.10.0",
+    "fastify-plugin": "^6.0.0",
+    "ioredis": "^5.11.1",
+    "jszip": "^3.10.1",
+    "node-forge": "^1.4.0",
+    "pdfkit": "^0.19.1",
+    "pg": "^8.22.0",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
+    "qrcode": "^1.5.4",
+    "undici": "^8.9.0",
+    "xml-crypto": "^6.1.2",
+    "xmlbuilder2": "^4.0.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "@types/node-forge": "^1.3.14",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.20.0",
+    "@types/qrcode": "^1.5.6",
+    "typescript": "^7.0.2"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22.14"
+  }
+}

@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Pruebas
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  # Verifica que el esquema aplica sobre una base limpia.
+  migracion:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sunat
+          POSTGRES_PASSWORD: sunat
+          POSTGRES_DB: sunat
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sunat"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Aplicar migración (dos veces: debe ser idempotente)
+        env:
+          DATABASE_URL: postgres://sunat:sunat@localhost:5432/sunat
+          SECRETS_MASTER_KEY: ${{ secrets.CI_SECRETS_KEY || 'Y2ktb25seS10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE=' }}
+        run: |
+          pnpm migrate
+          pnpm migrate

@@ -1,0 +1,11 @@
+node_modules
+dist
+storage
+tests
+reference
+.env*
+.git
+*.log
+docker-compose.yml
+README.md
+CLAUDE.md

@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backoffice · Facturación Electrónica SUNAT</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --border: #e3e6ea; --text: #1b1f24; --muted: #66707a;
+    --accent: #1d4ed8; --ok: #067647; --ok-bg: #e7f6ee; --warn: #9a6200; --warn-bg: #fdf3e2;
+    --err: #b42318; --err-bg: #fdeceb; --info: #175cd3; --info-bg: #eaf1fd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a; --panel: #1c2024; --border: #2c3238; --text: #e7ebee; --muted: #96a0aa;
+      --accent: #7aa2ff; --ok: #6ee7b7; --ok-bg: #10291f; --warn: #fbbf68; --warn-bg: #2c2312;
+      --err: #fca5a5; --err-bg: #2d1717; --info: #93b8ff; --info-bg: #16203a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+  header .sp { flex: 1; }
+  main { padding: 20px; max-width: 1500px; margin: 0 auto; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .card .v { font-size: 24px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .card .s { color: var(--muted); font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 12px; border-bottom: 1px solid var(--border); }
+  input, select, button {
+    font: inherit; color: var(--text); background: var(--panel);
+    border: 1px solid var(--border); border-radius: 7px; padding: 7px 10px;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+  button.primary:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--bg); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .table-wrap { overflow-x: auto; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+  .b-ok { background: var(--ok-bg); color: var(--ok); }
+  .b-warn { background: var(--warn-bg); color: var(--warn); }
+  .b-err { background: var(--err-bg); color: var(--err); }
+  .b-info { background: var(--info-bg); color: var(--info); }
+  .tabs { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tabs button { border-radius: 999px; }
+  .tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .muted { color: var(--muted); }
+  .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; }
+  pre {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; overflow: auto; max-height: 320px; font-size: 12px;
+  }
+  dialog {
+    border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text);
+    padding: 0; width: min(760px, 94vw); max-height: 88vh;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .dlg-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .dlg-body { padding: 18px; overflow: auto; max-height: calc(88vh - 60px); }
+  .kv { display: grid; grid-template-columns: 170px 1fr; gap: 6px 14px; margin-bottom: 16px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; word-break: break-word; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .gate { max-width: 420px; margin: 12vh auto; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  .err-box { background: var(--err-bg); color: var(--err); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+</style>
+</head>
+<body>
+
+<div id="gate" class="gate panel" hidden>
+  <div class="toolbar" style="border:0"><strong>Backoffice · Facturación Electrónica</strong></div>
+  <div style="padding: 0 12px 14px">
+    <p class="muted">Ingrese la clave maestra de la plataforma (<code>MASTER_API_KEY</code>).</p>
+    <div style="display:flex; gap:8px">
+      <input id="gate-key" type="password" placeholder="X-API-Key" style="flex:1" autofocus>
+      <button class="primary" id="gate-btn">Entrar</button>
+    </div>
+    <p id="gate-err" class="err-box" hidden></p>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <h1>Facturación Electrónica · Backoffice</h1>
+    <select id="f-tenant"><option value="">Todas las empresas</option></select>
+    <input id="f-desde" type="date" title="Desde">
+    <input id="f-hasta" type="date" title="Hasta">
+    <button id="refresh">Actualizar</button>
+    <label class="muted" style="display:flex;align-items:center;gap:6px">
+      <input type="checkbox" id="auto" style="width:auto"> auto 30 s
+    </label>
+    <span class="sp"></span>
+    <span id="stamp" class="muted"></span>
+    <a href="/docs" target="_blank" rel="noreferrer">API</a>
+    <button id="logout">Salir</button>
+  </header>
+
+  <main>
+    <div id="error" class="err-box" hidden></div>
+    <div class="cards" id="cards"></div>
+
+    <div class="tabs">
+      <button data-tab="docs" aria-selected="true">Comprobantes</button>
+      <button data-tab="resumenes" aria-selected="false">Resúmenes y bajas</button>
+      <button data-tab="cola" aria-selected="false">Cola</button>
+      <button data-tab="empresas" aria-selected="false">Empresas</button>
+      <button data-tab="errores" aria-selected="false">Últimos errores</button>
+    </div>
+
+    <section id="tab-docs" class="panel">
+      <div class="toolbar">
+        <input id="f-q" placeholder="Serie-correlativo, RUC o cliente…" style="min-width:260px">
+        <select id="f-state">
+          <option value="">Todos los estados</option>
+          <option value="ACEPTADO">Aceptado</option>
+          <option value="ACEPTADO_CON_OBSERVACIONES">Aceptado con observaciones</option>
+          <option value="RECHAZADO">Rechazado</option>
+          <option value="EXCEPCION">Excepción</option>
+          <option value="EN_COLA_SUNAT">En cola SUNAT</option>
+          <option value="PENDIENTE">Pendiente</option>
+        </select>
+        <select id="f-tipo">
+          <option value="">Todos los tipos</option>
+          <option value="01">01 Factura</option>
+          <option value="03">03 Boleta</option>
+          <option value="07">07 Nota de crédito</option>
+          <option value="08">08 Nota de débito</option>
+          <option value="09">09 Guía de remisión</option>
+          <option value="20">20 Retención</option>
+          <option value="40">40 Percepción</option>
+        </select>
+        <button id="buscar" class="primary">Buscar</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Comprobante</th><th>Empresa</th><th>Cliente</th><th>Fecha</th>
+          <th class="num">Total</th><th>Estado</th><th>Código</th><th>Creado</th>
+        </tr></thead>
+        <tbody id="docs-body"></tbody>
+      </table></div>
+      <div class="row-between">
+        <span id="docs-count" class="muted"></span>
+        <span>
+          <button id="prev">Anterior</button>
+          <button id="next">Siguiente</button>
+        </span>
+      </div>
+    </section>
+
+    <section id="tab-resumenes" class="panel" hidden>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Tipo</th><th>Archivo</th><th>Fecha ref.</th><th>Ticket</th><th>Estado</th><th>Descripción</th></tr></thead>
+        <tbody id="res-body"></tbody>
+      </table></div>
+    </section>
+
+    <section id="tab-cola" class="panel" hidden>
+      <div id="cola-counts" class="toolbar"></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Job</th><th>Tipo</th><th>Empresa</th><th>Intentos</th><th>Motivo</th><th></th></tr></thead>
+        <tbody id="cola-body"></tbody>
+      </table></div>
+    </section>
+
+    <section id="tab-empresas" class="panel" hidden>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Empresa</th><th>RUC</th><th>Ambiente</th><th>Usuario SOL</th><th>Certificado vence</th><th>Webhook</th></tr></thead>
+        <tbody id="emp-body"></tbody>
+      </table></div>
+    </section>
+
+    <section id="tab-errores" class="panel" hidden>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Archivo</th><th>Estado</th><th>Código</th><th>Detalle</th><th>Fecha</th></tr></thead>
+        <tbody id="err-body"></tbody>
+      </table></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="detalle">
+  <div class="dlg-head">
+    <strong id="d-title">Comprobante</strong>
+    <button onclick="document.getElementById('detalle').close()">Cerrar</button>
+  </div>
+  <div class="dlg-body" id="d-body"></div>
+</dialog>
+
+<script>
+const API = '/api/v1';
+const state = { key: localStorage.getItem('sunat_admin_key') || '', offset: 0, limit: 25, total: 0, timer: null };
+
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+
+const BADGES = {
+  ACEPTADO: 'b-ok',
+  ACEPTADO_CON_OBSERVACIONES: 'b-warn',
+  RECHAZADO: 'b-err',
+  EXCEPCION: 'b-err',
+  EN_COLA_SUNAT: 'b-info',
+  PENDIENTE: 'b-info',
+  ANULADO: 'b-warn',
+};
+const badge = (s) => `<span class="badge ${BADGES[s] || 'b-info'}">${esc(s)}</span>`;
+const fecha = (v) => (v ? String(v).slice(0, 10) : '—');
+const fechaHora = (v) => (v ? new Date(v).toLocaleString('es-PE') : '—');
+const money = (v, m) => `${m || 'PEN'} ${Number(v || 0).toFixed(2)}`;
+
+async function api(path, options = {}) {
+  const res = await fetch(API + path, {
+    ...options,
+    headers: { 'x-api-key': state.key, ...(options.headers || {}) },
+  });
+  if (res.status === 401) { salir(); throw new Error('Clave maestra inválida'); }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `Error ${res.status}`);
+  }
+  return res;
+}
+const apiJson = (path, options) => api(path, options).then((r) => r.json());
+
+function mostrarError(msg) {
+  const box = $('error');
+  if (!msg) { box.hidden = true; return; }
+  box.hidden = false;
+  box.textContent = msg;
+}
+
+/* ---------- filtros ---------- */
+function queryFiltros(extra = {}) {
+  const p = new URLSearchParams();
+  const tenant = $('f-tenant').value, desde = $('f-desde').value, hasta = $('f-hasta').value;
+  if (tenant) p.set('tenant_id', tenant);
+  if (desde) p.set('desde', desde);
+  if (hasta) p.set('hasta', hasta);
+  for (const [k, v] of Object.entries(extra)) if (v !== '' && v != null) p.set(k, v);
+  return p.toString();
+}
+
+/* ---------- carga ---------- */
+async function cargarOverview() {
+  const data = await apiJson('/admin/overview?' + queryFiltros());
+
+  const porEstado = Object.fromEntries(data.porEstado.map((e) => [e.state, e]));
+  const total = data.porEstado.reduce((a, e) => a + e.cantidad, 0);
+  const emitido = (porEstado.ACEPTADO?.monto || 0) + (porEstado.ACEPTADO_CON_OBSERVACIONES?.monto || 0);
+  const aceptados = (porEstado.ACEPTADO?.cantidad || 0) + (porEstado.ACEPTADO_CON_OBSERVACIONES?.cantidad || 0);
+  const tarjeta = (k, v, s, cls) => `<div class="card"><div class="k">${k}</div>
+      <div class="v" ${cls ? `style="color:var(--${cls})"` : ''}>${v}</div><div class="s">${s || '&nbsp;'}</div></div>`;
+
+  $('cards').innerHTML = [
+    tarjeta('Comprobantes', total, data.porTipo.map((t) => `${t.tipo}: ${t.cantidad}`).join(' · ')),
+    tarjeta('Aceptados', aceptados, total ? `${((aceptados / total) * 100).toFixed(1)} % del total` : '', 'ok'),
+    tarjeta('Rechazados', porEstado.RECHAZADO?.cantidad || 0, 'requieren corregir y reemitir', 'err'),
+    tarjeta('Excepciones', porEstado.EXCEPCION?.cantidad || 0, 'reintentables', 'err'),
+    tarjeta('En cola SUNAT', porEstado.EN_COLA_SUNAT?.cantidad || 0, 'esperando respuesta', 'info'),
+    tarjeta('Monto aceptado', emitido.toLocaleString('es-PE', { minimumFractionDigits: 2 }), 'suma de comprobantes aceptados'),
+  ].join('');
+
+  const sel = $('f-tenant');
+  if (sel.options.length <= 1) {
+    for (const e of data.empresas) {
+      sel.insertAdjacentHTML('beforeend', `<option value="${esc(e.tenant_id)}">${esc(e.razon_social)} (${esc(e.ruc)})</option>`);
+    }
+  }
+
+  $('emp-body').innerHTML = data.empresas.map((e) => `<tr>
+      <td>${esc(e.razon_social)}</td><td>${esc(e.ruc)}</td>
+      <td>${badge(e.ambiente === 'produccion' ? 'PRODUCCIÓN' : 'BETA')}</td>
+      <td>${esc(e.sol_user)}</td>
+      <td>${fecha(e.certificado?.valido_hasta)} ${e.certificado?.vencido ? '<span class="badge b-err">vencido</span>' : ''}</td>
+      <td class="muted">${esc(e.webhook_url || '—')}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">Sin empresas registradas</td></tr>';
+
+  $('res-body').innerHTML = data.resumenes.map((r) => `<tr>
+      <td>${esc(r.tipo)}</td><td>${esc(r.nombre_archivo)}</td><td>${fecha(r.fecha_referencia)}</td>
+      <td>${esc(r.ticket || '—')}</td><td>${badge(r.state)}</td>
+      <td class="muted">${esc(r.sunat_description || '')}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">Sin resúmenes ni bajas</td></tr>';
+
+  $('err-body').innerHTML = data.ultimosErrores.map((e) => `<tr data-id="${esc(e.id)}">
+      <td>${esc(e.nombre_archivo)}</td><td>${badge(e.sunat_state)}</td><td>${esc(e.sunat_code || '—')}</td>
+      <td class="muted">${esc((e.sunat_description || e.last_error || '').slice(0, 120))}</td>
+      <td>${fechaHora(e.created_at)}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty">Sin errores recientes 🎉</td></tr>';
+  for (const tr of $('err-body').querySelectorAll('tr[data-id]')) {
+    tr.onclick = () => abrirDetalle(tr.dataset.id);
+  }
+}
+
+async function cargarDocumentos() {
+  const filtros = queryFiltros({
+    q: $('f-q').value.trim(),
+    state: $('f-state').value,
+    tipo: $('f-tipo').value,
+    limit: state.limit,
+    offset: state.offset,
+  });
+  const data = await apiJson('/admin/documents?' + filtros);
+  state.total = data.total;
+
+  $('docs-body').innerHTML = data.items.map((d) => `<tr data-id="${esc(d.id)}">
+      <td><strong>${esc(d.comprobante)}</strong> <span class="muted">${esc(d.tipo_comprobante)}</span></td>
+      <td>${esc(d.razon_social)}</td>
+      <td>${esc(d.cliente || '—')}<br><span class="muted">${esc(d.cliente_num_doc || '')}</span></td>
+      <td>${fecha(d.fecha_emision)}</td>
+      <td class="num">${money(d.monto_total, d.moneda)}</td>
+      <td>${badge(d.state)}</td>
+      <td>${esc(d.sunat_code ?? '—')}</td>
+      <td class="muted">${fechaHora(d.created_at)}</td>
+    </tr>`).join('') || '<tr><td colspan="8" class="empty">Sin comprobantes para estos filtros</td></tr>';
+
+  for (const tr of $('docs-body').querySelectorAll('tr[data-id]')) {
+    tr.onclick = () => abrirDetalle(tr.dataset.id);
+  }
+  const hasta = Math.min(state.offset + state.limit, data.total);
+  $('docs-count').textContent = data.total
+    ? `${state.offset + 1}–${hasta} de ${data.total}`
+    : 'Sin resultados';
+  $('prev').disabled = state.offset === 0;
+  $('next').disabled = hasta >= data.total;
+}
+
+async function cargarCola() {
+  const data = await apiJson('/admin/queue');
+  if (!data.habilitada) {
+    $('cola-counts').innerHTML = '<span class="muted">La cola no está habilitada (falta REDIS_URL).</span>';
+    $('cola-body').innerHTML = '';
+    return;
+  }
+  $('cola-counts').innerHTML = Object.entries(data.counts)
+    .map(([k, v]) => `<span class="badge ${k === 'failed' && v ? 'b-err' : 'b-info'}">${esc(k)}: ${v}</span>`)
+    .join(' ');
+  $('cola-body').innerHTML = data.failed.map((j) => `<tr>
+      <td>${esc(j.id)}</td><td>${esc(j.name)}</td><td class="muted">${esc(j.tenant_id || '—')}</td>
+      <td>${j.intentos}</td><td class="muted">${esc((j.motivo || '').slice(0, 140))}</td>
+      <td><button data-job="${esc(j.id)}">Reintentar</button></td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">Sin trabajos fallidos</td></tr>';
+
+  for (const btn of $('cola-body').querySelectorAll('button[data-job]')) {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        await api(`/admin/queue/jobs/${btn.dataset.job}/retry`, { method: 'POST' });
+        await cargarCola();
+      } catch (e) { mostrarError(e.message); btn.disabled = false; }
+    };
+  }
+}
+
+/* ---------- detalle ---------- */
+async function abrirDetalle(id) {
+  const d = await apiJson('/admin/documents/' + id);
+  $('d-title').textContent = `${d.comprobante} · ${d.razon_social}`;
+
+  const notas = (d.sunat_notes || []).map((n) => `<li>${esc(n)}</li>`).join('');
+  const puedeReintentar = !String(d.state).startsWith('ACEPTADO') && ['01', '03', '07', '08', '20', '40'].includes(d.tipo_comprobante);
+
+  $('d-body').innerHTML = `
+    <dl class="kv">
+      <dt>Estado</dt><dd>${badge(d.state)}</dd>
+      <dt>Respuesta SUNAT</dt><dd>${esc(d.sunat_code ?? '—')} · ${esc(d.sunat_description || '—')}</dd>
+      ${notas ? `<dt>Observaciones</dt><dd><ul style="margin:0;padding-left:18px">${notas}</ul></dd>` : ''}
+      ${d.last_error ? `<dt>Último error</dt><dd class="muted">${esc(d.last_error)}</dd>` : ''}
+      <dt>Empresa</dt><dd>${esc(d.razon_social)} · ${esc(d.ruc)}</dd>
+      <dt>Cliente</dt><dd>${esc(d.cliente || '—')} · ${esc(d.cliente_num_doc || '')}</dd>
+      <dt>Fecha de emisión</dt><dd>${fecha(d.fecha_emision)}</dd>
+      <dt>Total</dt><dd>${money(d.monto_total, d.moneda)}</dd>
+      ${d.ticket ? `<dt>Ticket</dt><dd>${esc(d.ticket)}</dd>` : ''}
+      <dt>Reintentos</dt><dd>${d.retry_count}</dd>
+      <dt>Archivo</dt><dd>${esc(d.nombre_archivo)}</dd>
+    </dl>
+    <div class="actions">
+      ${['xml', 'cdr', 'pdf'].map((t) => d.files[t]
+        ? `<button data-file="${t}" data-id="${esc(d.id)}">Descargar ${t.toUpperCase()}</button>`
+        : `<button disabled>Sin ${t.toUpperCase()}</button>`).join('')}
+      ${puedeReintentar ? `<button class="primary" id="d-retry" data-id="${esc(d.id)}">Reintentar envío</button>` : ''}
+    </div>
+    <div id="d-retry-msg"></div>
+    <h2>Payload enviado</h2>
+    <pre>${esc(JSON.stringify(d.payload, null, 2))}</pre>`;
+
+  for (const btn of $('d-body').querySelectorAll('button[data-file]')) {
+    btn.onclick = async () => {
+      try {
+        const res = await api(`/admin/documents/${btn.dataset.id}/${btn.dataset.file}`);
+        const url = URL.createObjectURL(await res.blob());
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+      } catch (e) { mostrarError(e.message); }
+    };
+  }
+
+  const retry = $('d-retry');
+  if (retry) {
+    retry.onclick = async () => {
+      retry.disabled = true;
+      retry.textContent = 'Enviando a SUNAT…';
+      try {
+        const r = await apiJson(`/admin/documents/${retry.dataset.id}/retry`, { method: 'POST' });
+        $('d-retry-msg').innerHTML = `<div class="err-box" style="background:var(--info-bg);color:var(--info)">
+          Resultado: ${badge(r.state)} ${esc(r.code ?? '')} ${esc(r.description ?? '')}</div>`;
+        await refrescar();
+      } catch (e) {
+        $('d-retry-msg').innerHTML = `<div class="err-box">${esc(e.message)}</div>`;
+      } finally {
+        retry.disabled = false;
+        retry.textContent = 'Reintentar envío';
+      }
+    };
+  }
+
+  $('detalle').showModal();
+}
+
+/* ---------- navegación ---------- */
+function activarTab(tab) {
+  for (const b of document.querySelectorAll('.tabs button')) {
+    b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+  }
+  for (const s of ['docs', 'resumenes', 'cola', 'empresas', 'errores']) {
+    $('tab-' + s).hidden = s !== tab;
+  }
+  if (tab === 'cola') cargarCola().catch((e) => mostrarError(e.message));
+}
+
+async function refrescar() {
+  mostrarError('');
+  try {
+    await Promise.all([cargarOverview(), cargarDocumentos()]);
+    if (!$('tab-cola').hidden) await cargarCola();
+    $('stamp').textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-PE');
+  } catch (e) {
+    mostrarError(e.message);
+  }
+}
+
+function salir() {
+  localStorage.removeItem('sunat_admin_key');
+  state.key = '';
+  $('app').hidden = true;
+  $('gate').hidden = false;
+}
+
+async function entrar(key) {
+  state.key = key;
+  const res = await fetch(API + '/admin/overview', { headers: { 'x-api-key': key } });
+  if (!res.ok) throw new Error('Clave maestra inválida');
+  localStorage.setItem('sunat_admin_key', key);
+  $('gate').hidden = true;
+  $('app').hidden = false;
+  await refrescar();
+}
+
+$('gate-btn').onclick = async () => {
+  try {
+    $('gate-err').hidden = true;
+    await entrar($('gate-key').value.trim());
+  } catch (e) {
+    $('gate-err').hidden = false;
+    $('gate-err').textContent = e.message;
+  }
+};
+$('gate-key').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('gate-btn').click(); });
+$('logout').onclick = salir;
+$('refresh').onclick = refrescar;
+$('buscar').onclick = () => { state.offset = 0; cargarDocumentos().catch((e) => mostrarError(e.message)); };
+$('f-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('buscar').click(); });
+for (const id of ['f-tenant', 'f-desde', 'f-hasta', 'f-state', 'f-tipo']) {
+  $(id).onchange = () => { state.offset = 0; refrescar(); };
+}
+$('prev').onclick = () => { state.offset = Math.max(0, state.offset - state.limit); cargarDocumentos(); };
+$('next').onclick = () => { state.offset += state.limit; cargarDocumentos(); };
+$('auto').onchange = (e) => {
+  clearInterval(state.timer);
+  if (e.target.checked) state.timer = setInterval(refrescar, 30000);
+};
+for (const b of document.querySelectorAll('.tabs button')) b.onclick = () => activarTab(b.dataset.tab);
+
+if (state.key) {
+  entrar(state.key).catch(() => salir());
+} else {
+  $('gate').hidden = false;
+}
+</script>
+</body>
+</html>
