@@ -4,12 +4,12 @@ Emisión electrónica multitenant para Perú: genera el XML **UBL 2.1**, lo firm
 **XMLDSig (RSA-SHA256)**, lo transmite a SUNAT (SOAP para CPE, REST para las guías),
 procesa la **CDR** y produce la representación impresa en **PDF con QR**.
 
-La forma de los payloads es compatible con **Greenter / APIsPERU**, de modo que un
-backend que hoy consume APIsPERU puede migrar cambiando la URL base y el token.
+Los payloads siguen el formato de [Greenter](https://greenter.dev), el estándar de
+facto en el ecosistema peruano: los mismos campos producen el mismo XML.
 
 - **Stack:** Node.js 22 + TypeScript · Fastify · PostgreSQL · BullMQ/Redis · pdfkit
-- **Manual de usuario:** ver [`../sunat-docs`](../sunat-docs) (sitio VitePress con guías,
-  casos de uso y referencia). Este README cubre el despliegue y la operación.
+- **Manual de usuario:** repositorio [`sunat-docs`](https://github.com/carlosvidal/sunat-docs)
+  (guías, casos de uso y referencia). Este README cubre el despliegue y la operación.
 - **Comprobantes:** Factura (01), Boleta (03), Nota de Crédito (07), Nota de Débito (08),
   Retención (20), Percepción (40), Resumen Diario de Boletas (RC),
   Comunicación de Baja (RA), Guía de Remisión (GRE 2022)
@@ -66,7 +66,7 @@ Verificación: `curl localhost:3000/health`
 
 ## 3. Autenticación
 
-Dos niveles, como en APIsPERU:
+Dos niveles:
 
 1. **Clave maestra** (`X-API-Key: $MASTER_API_KEY`) → administrar empresas.
 2. **Token por empresa** (`Authorization: Bearer <token>`) → emitir. Se entrega al
@@ -325,3 +325,23 @@ curl -X POST localhost:3000/api/v1/companies/certificate/free \
   SUNAT como agente de retención o percepción.
 - **Producción:** cambiar `environment` a `produccion` en la empresa; el certificado
   debe ser uno emitido por una entidad autorizada (no autofirmado).
+
+---
+
+## Créditos
+
+La estructura de los XML UBL 2.1 se contrastó con las plantillas de
+[Greenter](https://github.com/thegreenter/xml) (MIT), el proyecto de referencia para
+facturación electrónica peruana. El formato de los payloads mantiene esa
+compatibilidad a propósito.
+
+Ante cualquier discrepancia entre una plantilla de referencia y lo que responde el
+web service, manda SUNAT: este servicio incorpora varias correcciones descubiertas
+emitiendo contra el ambiente real.
+
+## Licencia
+
+[MIT](LICENSE) © Carlos Vidal
+
+Este software se distribuye tal cual. La responsabilidad tributaria de los
+comprobantes emitidos es siempre del contribuyente emisor.

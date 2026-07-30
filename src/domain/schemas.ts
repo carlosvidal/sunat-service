@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Esquemas de entrada compatibles con el formato Greenter / APIsPERU.
+ * Esquemas de entrada en el formato de Greenter.
  * Se aceptan números o cadenas en los campos numéricos porque los clientes
  * suelen enviar RUC/DNI como number y los importes como string.
  */

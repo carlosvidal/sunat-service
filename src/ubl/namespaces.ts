@@ -12,4 +12,4 @@ export const NS = {
 } as const;
 
 /** Id del nodo ds:Signature referenciado desde cac:DigitalSignatureAttachment. */
-export const SIGNATURE_ID = 'SIGN-MITIENDA';
+export const SIGNATURE_ID = 'SIGN-CPE';

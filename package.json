@@ -12,9 +12,17 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "UNLICENSED",
+  "keywords": [
+    "sunat",
+    "facturacion-electronica",
+    "peru",
+    "ubl",
+    "cpe",
+    "xmldsig",
+    "fastify"
+  ],
+  "author": "Carlos Vidal",
+  "license": "MIT",
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
@@ -54,8 +62,12 @@
     "@types/qrcode": "^1.5.6",
     "typescript": "^7.0.2"
   },
-  "private": true,
   "engines": {
     "node": ">=22.14"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carlosvidal/sunat-service.git"
+  },
+  "homepage": "https://carlosvidal.github.io/sunat-docs/"
 }

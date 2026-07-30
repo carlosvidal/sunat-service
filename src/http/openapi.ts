@@ -51,9 +51,9 @@ notifica por webhook.
 
 ### Compatibilidad
 
-La estructura de los comprobantes es compatible con **Greenter / APIsPERU**:
-los mismos campos (\`tipoDoc\`, \`serie\`, \`details\`, \`tipAfeIgv\`, \`mtoValorUnitario\`…)
-producen el mismo XML.
+La estructura de los comprobantes sigue el formato de
+[Greenter](https://greenter.dev): los mismos campos (\`tipoDoc\`, \`serie\`, \`details\`,
+\`tipAfeIgv\`, \`mtoValorUnitario\`…) producen el mismo XML.
 `.trim();
 
 export const openapiPlugin = fp(async (app: FastifyInstance) => {
@@ -64,7 +64,7 @@ export const openapiPlugin = fp(async (app: FastifyInstance) => {
         title: 'Facturación Electrónica SUNAT',
         description: DESCRIPTION,
         version: '1.0.0',
-        contact: { name: 'MiTienda', email: 'soporte@mitienda.pe' },
+        license: { name: 'MIT', url: 'https://opensource.org/licenses/MIT' },
       },
       servers: [{ url: '/api/v1', description: 'Base de la API' }],
       tags: [

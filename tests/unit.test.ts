@@ -21,7 +21,7 @@ import type { SaleDoc } from '../src/ubl/types.ts';
 const company = {
   ruc: '20000000001',
   razonSocial: 'MI TIENDA S.A.C.',
-  nombreComercial: 'MITIENDA',
+  nombreComercial: 'MI EMPRESA',
   address: {
     ubigueo: '150101', codLocal: '0000', codigoPais: 'PE',
     direccion: 'AV. EMISOR 456', departamento: 'LIMA', provincia: 'LIMA', distrito: 'LIMA',
@@ -243,7 +243,7 @@ test('firma: XMLDSig RSA-SHA256 dentro de ExtensionContent', () => {
   const xml = buildSaleXml(toDoc(facturaBase()));
   const signed = signUbl(xml, material.privateKeyPem, material.certificatePem);
   assert.match(signed.xml, /<ext:ExtensionContent><ds:Signature/);
-  assert.match(signed.xml, /Id="SIGN-MITIENDA"/);
+  assert.match(signed.xml, /Id="SIGN-CPE"/);
   assert.match(signed.xml, /rsa-sha256/);
   assert.match(signed.xml, /<ds:X509Certificate>/);
   assert.equal(signed.digestValue.length, 44, 'el digest SHA-256 en base64 mide 44 caracteres');

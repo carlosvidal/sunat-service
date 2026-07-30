@@ -7,10 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Microservicio de emisión electrónica SUNAT (Node 22 + TypeScript + Fastify). El
 manual de usuario vive en un repositorio aparte (`sunat-docs`, VitePress).
 
-En `reference/`:
-- `PDR-microservicio-sunat.md` — la especificación original del servicio.
-- `apisperu-swagger.json` — la API de APIsPERU, referencia de compatibilidad y fuente
-  de payloads ya probados en producción por ese proveedor.
+En `reference/PDR-microservicio-sunat.md` está la especificación original del
+servicio.
 
 ## Comandos
 

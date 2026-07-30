@@ -66,6 +66,6 @@ export function tenantCtx(req: FastifyRequest): TenantContext {
 }
 
 export function issueTenantToken(app: FastifyInstance, tenant: TenantRow): string {
-  // Sin expiración: el token identifica a la empresa (igual que APIsPERU).
+  // Sin expiración: el token identifica a la empresa, no a una sesión.
   return app.jwt.sign({ tenant_id: tenant.tenant_id, ruc: tenant.ruc });
 }

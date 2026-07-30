@@ -39,7 +39,7 @@ const META = {
 
 /**
  * Rutas de emisión de Facturas/Boletas (`/invoice/*`) y Notas (`/note/*`).
- * La forma de los payloads y respuestas es compatible con APIsPERU/Greenter.
+ * La forma de los payloads sigue el formato de Greenter.
  */
 export function saleRoutes(kind: Kind) {
   return async function routes(app: FastifyInstance): Promise<void> {
@@ -48,7 +48,7 @@ export function saleRoutes(kind: Kind) {
     const meta = META[kind];
     const seguridad = [{ bearerAuth: [] }];
     const cuerpo = {
-      ...jsonSchema(schema, 'Comprobante en formato Greenter/APIsPERU. Los importes que se omitan se calculan a partir de los ítems. ' +
+      ...jsonSchema(schema, 'Comprobante en formato Greenter. Los importes que se omitan se calculan a partir de los ítems. ' +
         'Vea más casos (detracción, crédito, exportación, ICBPER) en `GET /examples`.'),
       example: meta.ejemplos[0],
     };
