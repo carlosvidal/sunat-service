@@ -509,13 +509,15 @@ async function abrirClaves(operatorId) {
       <button onclick="document.getElementById('op-form').close()">Cerrar</button>
     </div>`;
   $('opf-gen').onclick = async () => {
-    const label = $('opf-label').value.trim() || null;
+    // label opcional: se omite del body si está vacío (zod rechaza null).
+    const label = $('opf-label').value.trim();
+    const payload = label ? { label } : {};
     $('opf-gen').disabled = true;
     try {
       const created = await apiJson(`/operators/${operatorId}/keys`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ label }),
+        body: JSON.stringify(payload),
       });
       const caja = $('opf-nueva');
       caja.hidden = false;
