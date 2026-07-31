@@ -53,7 +53,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Aplicar migración (dos veces: debe ser idempotente)
+      - name: 'Aplicar migración (dos veces: debe ser idempotente)'
         env:
           DATABASE_URL: postgres://sunat:sunat@localhost:5432/sunat
         run: |
