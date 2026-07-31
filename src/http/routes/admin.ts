@@ -357,7 +357,14 @@ export async function backofficeUi(app: FastifyInstance): Promise<void> {
   app.get('/admin', { schema: { hide: true } }, async (_req, reply) => {
     for (const path of candidatos) {
       try {
-        return reply.type('text/html; charset=utf-8').send(await readFile(path, 'utf8'));
+        // El HTML del backoffice cambia con cada deploy: se sirve sin caché
+        // para que los navegadores y proxies intermedios no muestren versión vieja.
+        return reply
+          .type('text/html; charset=utf-8')
+          .header('cache-control', 'no-cache, no-store, must-revalidate')
+          .header('pragma', 'no-cache')
+          .header('expires', '0')
+          .send(await readFile(path, 'utf8'));
       } catch {
         continue;
       }
