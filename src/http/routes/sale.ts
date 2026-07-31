@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { invoiceSchema, noteSchema } from '../../domain/schemas.ts';
-import { emitirVenta, firmarVenta, prepararVenta } from '../../services/emitter.ts';
+import { emitirVenta, firmarVenta, prepararVenta, previsualizar } from '../../services/emitter.ts';
 import { renderSalePdf } from '../../pdf/sale-pdf.ts';
 import { consultarCdr } from '../../services/emitter.ts';
 import { getQueue, redisEnabled } from '../../queue/index.ts';
@@ -183,6 +183,36 @@ export function saleRoutes(kind: Kind) {
           .type('application/pdf')
           .header('content-disposition', `inline; filename="${artifacts.fileName}.pdf"`)
           .send(pdf);
+      } catch (err) {
+        return sendError(reply, err);
+      }
+    });
+
+
+    /** Previsualiza el comprobante: calcula totales sin tocar SUNAT ni la base. */
+    app.post('/preview', {
+      schema: {
+        tags: [meta.tag],
+        summary: `Previsualizar ${meta.nombre}`,
+        description:
+          'Calcula totales, correlativo sugerido y leyendas **sin emitir**: no consume correlativo, ' +
+          'no escribe en la base y no contacta a SUNAT. Devuelve además las advertencias detectadas ' +
+          'y una huella del comprobante (`huella`) que `/send` puede exigir para confirmar que se ' +
+          'emite exactamente lo previsualizado. Pensado para flujos asistidos por agentes de IA.',
+        security: seguridad,
+        body: cuerpo,
+        response: {
+          200: respuesta('Previsualización del comprobante.'),
+          400: respuesta('Payload inválido.'),
+        },
+      },
+    }, async (req, reply) => {
+      try {
+        const { tenant } = tenantCtx(req);
+        const input = schema.parse(req.body);
+        const correlativo = await correlativoPreview(tenant.tenant_id, input);
+        const doc = prepararVenta(tenant, input, correlativo);
+        return reply.send(previsualizar(doc));
       } catch (err) {
         return sendError(reply, err);
       }

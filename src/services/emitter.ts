@@ -14,6 +14,7 @@ import { companyOf, type TenantRow, type TenantSecrets } from '../repositories/t
 import * as repo from '../repositories/documents.ts';
 import { artifactKey, getStorage } from '../storage/index.ts';
 import { nombreBaja, nombreCpe, nombreResumen } from './naming.ts';
+import { createHash } from 'node:crypto';
 import { isoDate, todayPeru } from '../util/dates.ts';
 import { renderSalePdf } from '../pdf/sale-pdf.ts';
 import { renderRetPerPdf } from '../pdf/retention-pdf.ts';
@@ -638,4 +639,105 @@ export async function emitirRetPer(
   await guardarPdfRetPer(cdr.description);
 
   return { ...base, state, cdr };
+}
+
+/* ------------------------------------------------------------------ *
+ * Previsualización (sin efectos)
+ * ------------------------------------------------------------------ */
+
+export interface Previsualizacion {
+  comprobante: string;
+  tipoDoc: string;
+  serie: string;
+  correlativo: string;
+  fechaEmision: string;
+  moneda: string;
+  emisor: { ruc: string; razonSocial: string };
+  cliente: { tipoDoc: string; numDoc: string; rznSocial: string };
+  items: Array<{ descripcion: string; cantidad: number; valorUnitario: number; afectacion: string; importe: number }>;
+  totales: {
+    gravadas?: number; exoneradas?: number; inafectas?: number; exportacion?: number; gratuitas?: number;
+    igv?: number; isc?: number; icbper?: number; otrosTributos?: number;
+    totalImpuestos: number; valorVenta: number; total: number;
+  };
+  leyendas: Array<{ code: string; value: string }>;
+  advertencias: string[];
+  /** Huella del contenido: permite confirmar que se emite lo previsualizado. */
+  huella: string;
+}
+
+/**
+ * Resumen legible de lo que se emitiría. No consume correlativo, no escribe en
+ * la base y no contacta a SUNAT: es el paso de confirmación de los flujos
+ * asistidos, donde quien decide es un agente y quien aprueba es una persona.
+ */
+export function previsualizar(doc: SaleDoc): Previsualizacion {
+  const advertencias = validarTotales(doc as InvoiceInput | NoteInput);
+
+  // SUNAT exige declarar la forma de pago desde 2021; sin ella rechaza con 3244.
+  if (!doc.formaPago) {
+    advertencias.push(
+      'Falta la forma de pago (Contado o Crédito). SUNAT rechazará el comprobante con el código 3244',
+    );
+  }
+  if (doc.formaPago?.tipo === 'Credito' && !(doc.cuotas?.length)) {
+    advertencias.push('Una venta al crédito debe detallar sus cuotas');
+  }
+
+  if (!doc.client.address?.direccion && doc.tipoDoc === '01') {
+    advertencias.push('La factura no consigna la dirección del cliente');
+  }
+  if (doc.client.tipoDoc === '6' && !/^(10|20|15|17)\d{9}$/.test(doc.client.numDoc)) {
+    advertencias.push(`El RUC ${doc.client.numDoc} no tiene un formato válido`);
+  }
+  if (doc.tipoDoc === '03' && doc.client.tipoDoc === '0' && (doc.mtoImpVenta ?? 0) > 700) {
+    advertencias.push('Una boleta mayor a S/ 700 debe identificar al cliente con DNI');
+  }
+
+  const huella = createHash('sha256')
+    .update(JSON.stringify({
+      tipoDoc: doc.tipoDoc,
+      serie: doc.serie,
+      correlativo: doc.correlativo,
+      cliente: doc.client.numDoc,
+      total: doc.mtoImpVenta,
+      items: doc.details.map((d) => [d.descripcion, d.cantidad, d.mtoValorUnitario, d.tipAfeIgv]),
+    }))
+    .digest('hex')
+    .slice(0, 16);
+
+  return {
+    comprobante: `${doc.serie}-${doc.correlativo}`,
+    tipoDoc: doc.tipoDoc,
+    serie: doc.serie,
+    correlativo: doc.correlativo,
+    fechaEmision: isoDate(doc.fechaEmision),
+    moneda: doc.tipoMoneda,
+    emisor: { ruc: doc.company.ruc, razonSocial: doc.company.razonSocial },
+    cliente: { tipoDoc: doc.client.tipoDoc, numDoc: doc.client.numDoc, rznSocial: doc.client.rznSocial },
+    items: doc.details.map((d) => ({
+      descripcion: d.descripcion,
+      cantidad: d.cantidad,
+      valorUnitario: d.mtoValorUnitario ?? 0,
+      afectacion: d.tipAfeIgv,
+      importe: d.mtoValorVenta ?? 0,
+    })),
+    totales: {
+      gravadas: doc.mtoOperGravadas,
+      exoneradas: doc.mtoOperExoneradas,
+      inafectas: doc.mtoOperInafectas,
+      exportacion: doc.mtoOperExportacion,
+      gratuitas: doc.mtoOperGratuitas,
+      igv: doc.mtoIGV,
+      isc: doc.mtoISC,
+      icbper: doc.icbper,
+      otrosTributos: doc.mtoOtrosTributos,
+      totalImpuestos: doc.totalImpuestos ?? 0,
+      valorVenta: doc.valorVenta ?? 0,
+      total: doc.mtoImpVenta ?? 0,
+    },
+    leyendas: doc.legends ?? [],
+    advertencias,
+    huella,
+  };
 }

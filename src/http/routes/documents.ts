@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { listarDocumentos, obtenerDocumento, type SunatState } from '../../repositories/documents.ts';
 import { getStorage } from '../../storage/index.ts';
 import { tenantCtx } from '../auth.ts';
+import { toPublic as toPublicTenant } from '../../repositories/tenants.ts';
 import { sendError } from '../errors.ts';
 import { respuesta } from '../openapi.ts';
 
@@ -40,6 +41,20 @@ export async function documentRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('onRequest', app.requireTenant);
 
   const seguridad = [{ bearerAuth: [] }];
+
+  /** Identidad de la empresa autenticada: el agente necesita saber en qué ambiente opera. */
+  app.get('/me', {
+    schema: {
+      tags: ['documentos'],
+      summary: 'Datos de la empresa autenticada',
+      description: 'Devuelve RUC, razón social, ambiente y vigencia del certificado. Nunca expone secretos.',
+      security: seguridad,
+      response: { 200: respuesta('Datos públicos de la empresa.') },
+    },
+  }, async (req, reply) => {
+    const { tenant } = tenantCtx(req);
+    return reply.send(toPublicTenant(tenant));
+  });
 
   app.get('/documents', {
     schema: {
