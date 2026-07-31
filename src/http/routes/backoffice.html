@@ -124,6 +124,7 @@
       <button data-tab="resumenes" aria-selected="false">Resúmenes y bajas</button>
       <button data-tab="cola" aria-selected="false">Cola</button>
       <button data-tab="empresas" aria-selected="false">Empresas</button>
+      <button data-tab="operadores" aria-selected="false">Operadores</button>
       <button data-tab="errores" aria-selected="false">Últimos errores</button>
     </div>
 
@@ -184,8 +185,19 @@
 
     <section id="tab-empresas" class="panel" hidden>
       <div class="table-wrap"><table>
-        <thead><tr><th>Empresa</th><th>RUC</th><th>Operador</th><th>Ambiente</th><th>Usuario SOL</th><th>Certificado vence</th><th>Webhook</th></tr></thead>
+        <thead><tr><th>Empresa</th><th>RUC</th><th>Operador</th><th>Ambiente</th><th>Usuario SOL</th><th>Certificado vence</th><th>Webhook</th><th></th></tr></thead>
         <tbody id="emp-body"></tbody>
+      </table></div>
+    </section>
+
+    <section id="tab-operadores" class="panel" hidden>
+      <div class="toolbar">
+        <strong style="margin-right:auto">Operadores (PMS / ERP)</strong>
+        <button class="primary" id="op-nuevo">Nuevo operador</button>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Operador</th><th>Nombre</th><th>Estado</th><th>Claves</th><th>Creado</th><th></th></tr></thead>
+        <tbody id="op-body"></tbody>
       </table></div>
     </section>
 
@@ -204,6 +216,22 @@
     <button onclick="document.getElementById('detalle').close()">Cerrar</button>
   </div>
   <div class="dlg-body" id="d-body"></div>
+</dialog>
+
+<dialog id="op-form">
+  <div class="dlg-head">
+    <strong id="opf-title">Nuevo operador</strong>
+    <button onclick="document.getElementById('op-form').close()">Cerrar</button>
+  </div>
+  <div class="dlg-body" id="opf-body"></div>
+</dialog>
+
+<dialog id="reasignar">
+  <div class="dlg-head">
+    <strong>Reasignar empresa</strong>
+    <button onclick="document.getElementById('reasignar').close()">Cerrar</button>
+  </div>
+  <div class="dlg-body" id="rea-body"></div>
 </dialog>
 
 <script>
@@ -293,7 +321,12 @@ async function cargarOverview() {
       <td>${esc(e.sol_user)}</td>
       <td>${fecha(e.certificado?.valido_hasta)} ${e.certificado?.vencido ? '<span class="badge b-err">vencido</span>' : ''}</td>
       <td class="muted">${esc(e.webhook_url || '—')}</td>
-    </tr>`).join('') || '<tr><td colspan="7" class="empty">Sin empresas registradas</td></tr>';
+      <td><button data-reasigna="${esc(e.tenant_id)}" data-razon="${esc(e.razon_social)}" data-op="${esc(e.operator?.operator_id || '')}">Reasignar</button></td>
+    </tr>`).join('') || '<tr><td colspan="8" class="empty">Sin empresas registradas</td></tr>';
+
+  for (const btn of $('emp-body').querySelectorAll('button[data-reasigna]')) {
+    btn.onclick = () => abrirReasignar(btn.dataset.reasigna, btn.dataset.razon, btn.dataset.op || null);
+  }
 
   $('res-body').innerHTML = data.resumenes.map((r) => `<tr>
       <td>${esc(r.tipo)}</td><td>${esc(r.nombre_archivo)}</td><td>${fecha(r.fecha_referencia)}</td>
@@ -371,6 +404,210 @@ async function cargarCola() {
   }
 }
 
+/* ---------- operadores ---------- */
+async function cargarOperadores() {
+  const data = await apiJson('/operators');
+  // Guarda la lista para el diálogo de reasignación (select de operadores).
+  state.operadores = data;
+  $('op-body').innerHTML = data.map((o) => `<tr>
+      <td><strong>${esc(o.operator_id)}</strong></td>
+      <td>${esc(o.nombre)}</td>
+      <td>${o.activo ? '<span class="badge b-ok">activo</span>' : '<span class="badge b-warn">inactivo</span>'}</td>
+      <td class="muted">${o.claves_activas ?? '—'}</td>
+      <td class="muted">${fechaHora(o.created_at)}</td>
+      <td style="white-space:nowrap">
+        <button data-claves="${esc(o.operator_id)}">Claves</button>
+        <button data-toggle="${esc(o.operator_id)}" data-activo="${o.activo ? 1 : 0}">${o.activo ? 'Desactivar' : 'Activar'}</button>
+        <button data-eliminar="${esc(o.operator_id)}">Eliminar</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">Sin operadores. Crea el primero.</td></tr>';
+
+  for (const btn of $('op-body').querySelectorAll('button[data-claves]')) {
+    btn.onclick = () => abrirClaves(btn.dataset.claves);
+  }
+  for (const btn of $('op-body').querySelectorAll('button[data-toggle]')) {
+    btn.onclick = async () => {
+      const activo = btn.dataset.activo === '1';
+      try {
+        btn.disabled = true;
+        await api(`/operators/${btn.dataset.toggle}/activate`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ activo: !activo }),
+        });
+        await cargarOperadores();
+      } catch (e) { mostrarError(e.message); btn.disabled = false; }
+    };
+  }
+  for (const btn of $('op-body').querySelectorAll('button[data-eliminar]')) {
+    btn.onclick = async () => {
+      if (!confirm(`¿Eliminar el operador "${btn.dataset.eliminar}"?\n\nSus empresas quedarán huérfanas (reasignables) y no se perderá su historial de comprobantes. Esta acción no se puede deshacer.`)) return;
+      try {
+        btn.disabled = true;
+        await api(`/operators/${btn.dataset.eliminar}`, { method: 'DELETE' });
+        await cargarOperadores();
+      } catch (e) { mostrarError(e.message); btn.disabled = false; }
+    };
+  }
+}
+
+/** Diálogo: alta de operador (operator_id + nombre). */
+function abrirNuevoOperador() {
+  $('opf-title').textContent = 'Nuevo operador';
+  $('opf-body').innerHTML = `
+    <p class="muted" style="margin-top:0">Un operador (PMS, ERP, ecommerce) administra las empresas que le pertenecen con su propia API key.</p>
+    <dl class="kv">
+      <dt><label for="opf-id">ID del operador</label></dt>
+      <dd><input id="opf-id" placeholder="p. ej. hotelpms" style="width:100%"></dd>
+      <dt><label for="opf-nombre">Nombre</label></dt>
+      <dd><input id="opf-nombre" placeholder="p. ej. Hotel PMS" style="width:100%"></dd>
+    </dl>
+    <p id="opf-err" class="err-box" hidden></p>
+    <div class="actions">
+      <button class="primary" id="opf-crear">Crear operador</button>
+      <button onclick="document.getElementById('op-form').close()">Cancelar</button>
+    </div>`;
+  $('opf-crear').onclick = async () => {
+    const operator_id = $('opf-id').value.trim();
+    const nombre = $('opf-nombre').value.trim();
+    const err = $('opf-err');
+    if (!operator_id || !nombre) { err.hidden = false; err.textContent = 'Completa el ID y el nombre.'; return; }
+    err.hidden = true;
+    $('opf-crear').disabled = true;
+    try {
+      await apiJson('/operators', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operator_id, nombre }),
+      });
+      $('op-form').close();
+      await cargarOperadores();
+    } catch (e) {
+      err.hidden = false; err.textContent = e.message; $('opf-crear').disabled = false;
+    }
+  };
+  $('op-form').showModal();
+}
+
+/** Diálogo: gestión de claves API de un operador. */
+async function abrirClaves(operatorId) {
+  const op = (state.operadores || []).find((o) => o.operator_id === operatorId);
+  $('opf-title').textContent = `Claves · ${operatorId}`;
+  $('opf-body').innerHTML = `
+    <p class="muted" style="margin-top:0">${esc(op ? op.nombre : '')} — genera claves <code>skop_...</code>; cada una se muestra <strong>una sola vez</strong>.</p>
+    <div class="actions">
+      <input id="opf-label" placeholder="Etiqueta (opcional, p. ej. producción)" style="flex:1;min-width:200px">
+      <button class="primary" id="opf-gen">Generar clave</button>
+    </div>
+    <div id="opf-nueva" class="err-box" style="background:var(--info-bg);color:var(--info)" hidden></div>
+    <h2>Claves existentes</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Prefijo</th><th>Etiqueta</th><th>Último uso</th><th>Creada</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="opf-keys"></tbody>
+    </table></div>
+    <div class="actions" style="margin-top:14px">
+      <button onclick="document.getElementById('op-form').close()">Cerrar</button>
+    </div>`;
+  $('opf-gen').onclick = async () => {
+    const label = $('opf-label').value.trim() || null;
+    $('opf-gen').disabled = true;
+    try {
+      const created = await apiJson(`/operators/${operatorId}/keys`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ label }),
+      });
+      const caja = $('opf-nueva');
+      caja.hidden = false;
+      caja.innerHTML = `Clave creada. <strong>Cópiala ahora</strong>, no se volverá a mostrar:
+        <pre style="margin:8px 0 0;user-select:all">${esc(created.key)}</pre>
+        <button id="opf-copy" class="primary" style="margin-top:8px">Copiar</button>`;
+      $('opf-copy').onclick = () => copiar(created.key);
+      $('opf-label').value = '';
+      await renderClaves(operatorId);
+    } catch (e) {
+      const caja = $('opf-nueva'); caja.hidden = false;
+      caja.style.background = 'var(--err-bg)'; caja.style.color = 'var(--err)';
+      caja.textContent = e.message;
+    } finally {
+      $('opf-gen').disabled = false;
+    }
+  };
+  $('op-form').showModal();
+  await renderClaves(operatorId);
+}
+
+/** Pinta la tabla de claves dentro del diálogo. */
+async function renderClaves(operatorId) {
+  const keys = await apiJson(`/operators/${operatorId}/keys`);
+  $('opf-keys').innerHTML = keys.map((k) => `<tr>
+      <td><code>${esc(k.key_prefix)}…</code></td>
+      <td>${esc(k.label || '—')}</td>
+      <td class="muted">${fechaHora(k.last_used_at)}</td>
+      <td class="muted">${fechaHora(k.created_at)}</td>
+      <td>${k.revoked_at ? '<span class="badge b-warn">revocada</span>' : '<span class="badge b-ok">activa</span>'}</td>
+      <td>${k.revoked_at ? '' : `<button data-revoca="${esc(k.id)}">Revocar</button>`}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">Sin claves. Genera la primera.</td></tr>';
+  for (const btn of $('opf-keys').querySelectorAll('button[data-revoca]')) {
+    btn.onclick = async () => {
+      if (!confirm('¿Revocar esta clave? Dejará de validar de inmediato.')) return;
+      try {
+        btn.disabled = true;
+        await api(`/operators/${operatorId}/keys/${btn.dataset.revoca}`, { method: 'DELETE' });
+        await renderClaves(operatorId);
+      } catch (e) { mostrarError(e.message); btn.disabled = false; }
+    };
+  }
+}
+
+function copiar(texto) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(texto).catch(() => {});
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = texto; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    document.body.removeChild(ta);
+  }
+}
+
+/* ---------- reasignar empresa ---------- */
+function abrirReasignar(tenantId, razonSocial, opActualId) {
+  const ops = state.operadores || [];
+  if (!ops.length) { mostrarError('No hay operadores. Crea uno primero en la pestaña Operadores.'); return; }
+  $('rea-body').innerHTML = `
+    <p style="margin-top:0">Mueve <strong>${esc(razonSocial)}</strong> a otro operador. El token de emisión de la empresa no cambia: el ERP del cliente sigue funcionando sin interrupción.</p>
+    <dl class="kv">
+      <dt><label for="rea-op">Operador destino</label></dt>
+      <dd>
+        <select id="rea-op" style="width:100%">
+          ${ops.map((o) => `<option value="${esc(o.operator_id)}" ${o.operator_id === opActualId ? 'selected' : ''}>${esc(o.nombre)} (${esc(o.operator_id)})</option>`).join('')}
+        </select>
+      </dd>
+    </dl>
+    <p id="rea-err" class="err-box" hidden></p>
+    <div class="actions">
+      <button class="primary" id="rea-ok">Reasignar</button>
+      <button onclick="document.getElementById('reasignar').close()">Cancelar</button>
+    </div>`;
+  $('rea-ok').onclick = async () => {
+    const operator_id = $('rea-op').value;
+    $('rea-ok').disabled = true;
+    try {
+      await apiJson(`/companies/${tenantId}/reassign`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operator_id }),
+      });
+      $('reasignar').close();
+      await refrescar();
+    } catch (e) {
+      const err = $('rea-err'); err.hidden = false; err.textContent = e.message; $('rea-ok').disabled = false;
+    }
+  };
+  $('reasignar').showModal();
+}
+
 /* ---------- detalle ---------- */
 async function abrirDetalle(id) {
   const d = await apiJson('/admin/documents/' + id);
@@ -441,15 +678,20 @@ function activarTab(tab) {
   for (const b of document.querySelectorAll('.tabs button')) {
     b.setAttribute('aria-selected', String(b.dataset.tab === tab));
   }
-  for (const s of ['docs', 'resumenes', 'cola', 'empresas', 'errores']) {
+  for (const s of ['docs', 'resumenes', 'cola', 'empresas', 'operadores', 'errores']) {
     $('tab-' + s).hidden = s !== tab;
   }
   if (tab === 'cola') cargarCola().catch((e) => mostrarError(e.message));
+  if (tab === 'operadores') cargarOperadores().catch((e) => mostrarError(e.message));
 }
 
 async function refrescar() {
   mostrarError('');
   try {
+    // Cargar operadores (ligero) en cada refresco para que el select de
+    // reasignación siempre tenga datos, y refrescar la pestaña si está abierta.
+    state.operadores = await apiJson('/operators');
+    if (!$('tab-operadores').hidden) await cargarOperadores();
     await Promise.all([cargarOverview(), cargarDocumentos()]);
     if (!$('tab-cola').hidden) await cargarCola();
     $('stamp').textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-PE');
@@ -487,6 +729,7 @@ $('gate-btn').onclick = async () => {
 $('gate-key').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('gate-btn').click(); });
 $('logout').onclick = salir;
 $('refresh').onclick = refrescar;
+$('op-nuevo').onclick = abrirNuevoOperador;
 $('buscar').onclick = () => { state.offset = 0; cargarDocumentos().catch((e) => mostrarError(e.message)); };
 $('f-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('buscar').click(); });
 for (const id of ['f-tenant', 'f-desde', 'f-hasta', 'f-state', 'f-tipo']) {

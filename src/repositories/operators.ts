@@ -47,8 +47,23 @@ export async function findOperator(operatorId: string): Promise<OperatorRow | nu
   return rows[0] ?? null;
 }
 
-export async function listOperators(): Promise<OperatorRow[]> {
-  const { rows } = await query<OperatorRow>('SELECT * FROM operators ORDER BY created_at DESC');
+/** Operador con conteo de claves activas (para listados/UI). */
+export interface OperatorWithKeys extends OperatorRow {
+  claves_activas: number;
+}
+
+export async function listOperators(): Promise<OperatorWithKeys[]> {
+  const { rows } = await query<OperatorWithKeys>(
+    `SELECT o.*, COALESCE(k.claves_activas, 0) AS claves_activas
+     FROM operators o
+     LEFT JOIN (
+       SELECT operator_id, COUNT(*)::int AS claves_activas
+       FROM operator_api_keys
+       WHERE revoked_at IS NULL
+       GROUP BY operator_id
+     ) k ON k.operator_id = o.operator_id
+     ORDER BY o.created_at DESC`,
+  );
   return rows;
 }
 
