@@ -524,7 +524,21 @@ async function abrirClaves(operatorId) {
       caja.innerHTML = `Clave creada. <strong>Cópiala ahora</strong>, no se volverá a mostrar:
         <pre style="margin:8px 0 0;user-select:all">${esc(created.key)}</pre>
         <button id="opf-copy" class="primary" style="margin-top:8px">Copiar</button>`;
-      $('opf-copy').onclick = () => copiar(created.key);
+      $('opf-copy').onclick = async () => {
+        const ok = await copiar(created.key);
+        const btn = $('opf-copy');
+        if (ok) {
+          const prev = btn.textContent;
+          btn.textContent = '✓ Copiado';
+          setTimeout(() => { btn.textContent = prev; }, 2000);
+        } else {
+          // Último recurso: selecciona la clave para que el usuario la copie.
+          const pre = caja.querySelector('pre');
+          if (pre) { const r = document.createRange(); r.selectNodeContents(pre);
+            const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+          btn.textContent = 'No se pudo: pulsa ⌘C';
+        }
+      };
       $('opf-label').value = '';
       await renderClaves(operatorId);
     } catch (e) {
@@ -562,14 +576,28 @@ async function renderClaves(operatorId) {
   }
 }
 
-function copiar(texto) {
+/** Copia al portapapeles con fallback; devuelve true si lo logró. */
+async function copiar(texto) {
+  // API moderna (requiere contexto seguro + foco).
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(texto).catch(() => {});
-  } else {
+    try {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    } catch (_) { /* cae al fallback */ }
+  }
+  // Fallback legacy: funciona en cualquier contexto (p. ej. dentro de un dialog).
+  try {
     const ta = document.createElement('textarea');
-    ta.value = texto; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); } catch (_) {}
+    ta.value = texto;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
     document.body.removeChild(ta);
+    return ok;
+  } catch (_) {
+    return false;
   }
 }
 
