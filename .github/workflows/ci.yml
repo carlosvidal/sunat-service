@@ -8,6 +8,19 @@ on:
 jobs:
   verificar:
     runs-on: ubuntu-latest
+    services:
+      # Los tests de integración (tests/operators.test.ts) usan Postgres en
+      # localhost:5434; aquí lo publicamos en ese puerto para que corran de
+      # verdad. Sin BD, la suite se salta sin fallar (skip condicional).
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sunat
+          POSTGRES_PASSWORD: sunat
+        ports: ['5434:5432']
+        options: >-
+          --health-cmd "pg_isready -U sunat"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
