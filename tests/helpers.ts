@@ -66,6 +66,9 @@ export function setupIntegrationSuite(ctx: IntegrationCtx): void {
     process.env.NODE_ENV = 'test';
     process.env.MASTER_API_KEY = 'test-master-key';
     process.env.JWT_SECRET = 'test-jwt-secret';
+    // Clave de cifrado AES-256-GCM para los secretos de empresas en tests
+    // (32 bytes en base64). Requerida por upsertTenant al crear empresas.
+    process.env.SECRETS_MASTER_KEY = Buffer.alloc(32, 7).toString('base64');
     process.env.LOG_LEVEL = 'error';
     ctx.disponible = await postgresDisponible();
     if (!ctx.disponible) {
