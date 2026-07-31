@@ -66,11 +66,26 @@ Verificación: `curl localhost:3000/health`
 
 ## 3. Autenticación
 
-Dos niveles:
+Tres niveles:
 
-1. **Clave maestra** (`X-API-Key: $MASTER_API_KEY`) → administrar empresas.
-2. **Token por empresa** (`Authorization: Bearer <token>`) → emitir. Se entrega al
-   crear la empresa y no expira; puede reemitirse con `POST /companies/:id/token`.
+1. **Clave maestra / super-admin** (`X-API-Key: $MASTER_API_KEY`) → crear operadores,
+   gestionar sus claves API, reasignar empresas entre operadores y operar el backoffice.
+2. **API key de operador** (`X-Operator-Key: skop_...`) → alta y administración de las
+   **empresas que le pertenecen** (relación 1:N). Un operador (PMS, ERP, ecommerce) sólo
+   ve y administra sus empresas; no puede acceder a las de otros operadores. Cada operador
+   puede tener **varias claves activas** para rotar con solapamiento.
+3. **Token por empresa** (`Authorization: Bearer <token>`) → emitir. Se entrega al crear la
+   empresa y no expira; puede reemitirse con `POST /companies/:id/token`.
+
+### Rotación de la clave de un operador (sin downtime)
+
+```
+POST /operators/:id/keys        # nueva clave (ambas conviven)
+→ distribuir la nueva al operador
+DELETE /operators/:id/keys/:old # revocar la vieja cuando nadie la usa
+```
+
+No requiere coordinar con otros operadores: cada uno rota la suya de forma independiente.
 
 ---
 
@@ -78,12 +93,37 @@ Dos niveles:
 
 Base: `/api/v1`
 
-### Empresas (clave maestra)
+### Operadores (clave maestra / super-admin)
 
 | Método | Ruta | Descripción |
 | --- | --- | --- |
-| `POST` | `/companies` | Alta/actualización de empresa (idempotente por `tenant_id`). Devuelve el token. |
-| `GET` | `/companies` · `/companies/:id` | Consulta. Nunca expone secretos. |
+| `POST` | `/operators` | Crear/actualizar operador (idempotente por `operator_id`). |
+| `GET` | `/operators` · `/operators/:id` | Listar / consultar. |
+| `POST` | `/operators/:id/keys` | Generar API key `skop_...` (se devuelve una sola vez). |
+| `GET` | `/operators/:id/keys` | Listar claves (sin hash). |
+| `DELETE` | `/operators/:id/keys/:keyId` | Revocar una clave. |
+| `POST` | `/operators/:id/activate` | Activar/desactivar operador (`{ activo }`). |
+| `DELETE` | `/operators/:id` | Eliminar operador (sus empresas quedan huérfanas y reasignables). |
+| `POST` | `/companies/:id/reassign` | Reasignar empresa a otro operador (`{ operator_id }`). No cambia el JWT del tenant. |
+
+```bash
+# 1) Crear operador y obtener su API key
+curl -X POST localhost:3000/api/v1/operators \
+  -H "x-api-key: $MASTER_API_KEY" -H 'content-type: application/json' \
+  -d '{ "operator_id": "pms-acme", "nombre": "PMS Acme" }'
+
+curl -X POST localhost:3000/api/v1/operators/pms-acme/keys \
+  -H "x-api-key: $MASTER_API_KEY" -H 'content-type: application/json' \
+  -d '{ "label": "produccion" }'
+# → { "key": "skop_....", ... }   # entrégala al operador por canal seguro
+```
+
+### Empresas (API key de operador)
+
+| Método | Ruta | Descripción |
+| --- | --- | --- |
+| `POST` | `/companies` | Alta/actualización de empresa (idempotente por `tenant_id`). La asocia al operador. Devuelve el token. |
+| `GET` | `/companies` · `/companies/:id` | Consulta de las **empresas del operador**. Nunca expone secretos. |
 | `POST` | `/companies/:id/token` | Reemite el token de emisión. |
 | `DELETE` | `/companies/:id` | Baja. |
 | `POST` | `/companies/certificate/inspect` | Valida un `.pfx`/PEM y muestra vigencia y RUC. |
@@ -91,7 +131,7 @@ Base: `/api/v1`
 
 ```bash
 curl -X POST localhost:3000/api/v1/companies \
-  -H "x-api-key: $MASTER_API_KEY" -H 'content-type: application/json' -d '{
+  -H "x-operator-key: $OPERATOR_KEY" -H 'content-type: application/json' -d '{
     "tenant_id": "tienda-123",
     "ruc": "20000000001",
     "razon_social": "MI EMPRESA S.A.C.",
@@ -301,7 +341,7 @@ Para probar sin certificado propio:
 
 ```bash
 curl -X POST localhost:3000/api/v1/companies/certificate/free \
-  -H "x-api-key: $MASTER_API_KEY" -H 'content-type: application/json' \
+  -H "x-operator-key: $OPERATOR_KEY" -H 'content-type: application/json' \
   -d '{"ruc":"20000000001","razon_social":"EMPRESA DEMO","password":"demo123"}'
 ```
 

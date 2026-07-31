@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { addressSchema } from '../../domain/schemas.ts';
-import { deleteTenant, findTenant, listTenants, toPublic, upsertTenant } from '../../repositories/tenants.ts';
+import { deleteTenant, findTenant, listTenantsByOperator, toPublic, upsertTenant } from '../../repositories/tenants.ts';
+import { tenantBelongsToOperator } from '../../repositories/operators.ts';
 import { generateSelfSignedPfx, loadCertificate } from '../../security/certificate.ts';
-import { issueTenantToken } from '../auth.ts';
+import { issueTenantToken, operatorCtx } from '../auth.ts';
 import { sendError } from '../errors.ts';
 import { jsonSchema, respuesta } from '../openapi.ts';
 import { EJEMPLO_EMPRESA } from '../examples.ts';
@@ -27,10 +28,11 @@ const companyBody = z.object({
 });
 
 export async function companyRoutes(app: FastifyInstance): Promise<void> {
-  // Administración de empresas: requiere la clave maestra de la plataforma.
-  app.addHook('onRequest', app.requireMasterKey);
+  // Administración de empresas: requiere una API key de operador válida.
+  // Cada operador sólo ve y administra las empresas que le pertenecen.
+  app.addHook('onRequest', app.requireOperator);
 
-  const seguridad = [{ apiKey: [] }];
+  const seguridad = [{ operatorKey: [] }];
   const paramsTenant = {
     type: 'object',
     required: ['tenantId'],
@@ -43,19 +45,30 @@ export async function companyRoutes(app: FastifyInstance): Promise<void> {
       summary: 'Registrar o actualizar una empresa emisora',
       description:
         'Alta idempotente por `tenant_id`. Valida el certificado antes de guardarlo, cifra la clave SOL y ' +
-        'la del certificado con AES-256-GCM, y devuelve el token con el que la empresa emitirá. ' +
-        'El certificado se envía en base64 (`.pfx`, `.p12` o PEM).',
+        'la del certificado con AES-256-GCM, asocia la empresa al operador autenticado y devuelve el ' +
+        'token con el que la empresa emitirá. El certificado se envía en base64 (`.pfx`, `.p12` o PEM).',
       security: seguridad,
       body: { ...jsonSchema(companyBody), example: EJEMPLO_EMPRESA },
       response: {
         200: respuesta('Empresa registrada. Incluye `token`.'),
         400: respuesta('Datos inválidos o certificado ilegible.'),
-        401: respuesta('X-API-Key inválido.'),
+        401: respuesta('API key de operador inválida.'),
+        409: respuesta('La empresa pertenece a otro operador.'),
       },
     },
   }, async (req, reply) => {
     try {
       const body = companyBody.parse(req.body);
+      const { operator } = operatorCtx(req);
+      // Si la empresa ya existe, debe pertenecer a este operador; si no, se
+      // rechaza con 409 para evitar robo de empresas vía tenant_id ajeno.
+      const existing = await findTenant(body.tenant_id);
+      if (existing && existing.operator_id !== operator.operator_id) {
+        return reply.code(409).send({
+          code: 409,
+          message: 'La empresa ya existe y pertenece a otro operador',
+        });
+      }
       const tenant = await upsertTenant({
         tenantId: body.tenant_id,
         ruc: body.ruc,
@@ -71,6 +84,7 @@ export async function companyRoutes(app: FastifyInstance): Promise<void> {
         ambiente: body.environment,
         webhookUrl: body.webhook_url,
         webhookSecret: body.webhook_secret,
+        operatorId: operator.operator_id,
       });
       return reply.send({ ...toPublic(tenant), token: issueTenantToken(app, tenant) });
     } catch (err) {
@@ -81,13 +95,14 @@ export async function companyRoutes(app: FastifyInstance): Promise<void> {
   app.get('/companies', {
     schema: {
       tags: ['empresa'],
-      summary: 'Listar empresas',
-      description: 'Datos públicos de cada empresa. Nunca devuelve secretos ni el certificado.',
+      summary: 'Listar empresas del operador',
+      description: 'Sólo las empresas que pertenecen al operador autenticado. Nunca devuelve secretos ni el certificado.',
       security: seguridad,
       response: { 200: respuesta('Listado de empresas.') },
     },
-  }, async (_req, reply) => {
-    const tenants = await listTenants();
+  }, async (req, reply) => {
+    const { operator } = operatorCtx(req);
+    const tenants = await listTenantsByOperator(operator.operator_id);
     return reply.send(tenants.map(toPublic));
   });
 
@@ -95,15 +110,18 @@ export async function companyRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       tags: ['empresa'],
       summary: 'Obtener una empresa',
-      description: 'Incluye la vigencia del certificado digital.',
+      description: 'Incluye la vigencia del certificado digital. Sólo si pertenece al operador.',
       security: seguridad,
       params: paramsTenant,
       response: { 200: respuesta('Datos de la empresa.'), 404: respuesta('No existe.') },
     },
   }, async (req, reply) => {
     const { tenantId } = req.params as { tenantId: string };
+    const { operator } = operatorCtx(req);
     const tenant = await findTenant(tenantId);
-    if (!tenant) return reply.code(404).send({ code: 404, message: 'Empresa no encontrada' });
+    if (!tenant || tenant.operator_id !== operator.operator_id) {
+      return reply.code(404).send({ code: 404, message: 'Empresa no encontrada' });
+    }
     return reply.send(toPublic(tenant));
   });
 
@@ -119,6 +137,10 @@ export async function companyRoutes(app: FastifyInstance): Promise<void> {
     },
   }, async (req, reply) => {
     const { tenantId } = req.params as { tenantId: string };
+    const { operator } = operatorCtx(req);
+    if (!(await tenantBelongsToOperator(tenantId, operator.operator_id))) {
+      return reply.code(404).send({ code: 404, message: 'Empresa no encontrada' });
+    }
     const tenant = await findTenant(tenantId);
     if (!tenant) return reply.code(404).send({ code: 404, message: 'Empresa no encontrada' });
     return reply.send({ token: issueTenantToken(app, tenant) });
@@ -135,6 +157,10 @@ export async function companyRoutes(app: FastifyInstance): Promise<void> {
     },
   }, async (req, reply) => {
     const { tenantId } = req.params as { tenantId: string };
+    const { operator } = operatorCtx(req);
+    if (!(await tenantBelongsToOperator(tenantId, operator.operator_id))) {
+      return reply.code(404).send({ code: 404, message: 'Empresa no encontrada' });
+    }
     const ok = await deleteTenant(tenantId);
     if (!ok) return reply.code(404).send({ code: 404, message: 'Empresa no encontrada' });
     return reply.send({ deleted: true });

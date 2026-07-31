@@ -9,6 +9,7 @@ import { despatchRoutes } from './http/routes/despatch.ts';
 import { retPerRoutes } from './http/routes/retention.ts';
 import { documentRoutes } from './http/routes/documents.ts';
 import { adminRoutes, backofficeUi } from './http/routes/admin.ts';
+import { operatorRoutes } from './http/routes/operators.ts';
 import { exampleRoutes } from './http/routes/examples-route.ts';
 import { getPool } from './db/pool.ts';
 import { redisEnabled } from './queue/index.ts';
@@ -20,7 +21,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       transport: config.env === 'development' ? { target: 'pino-pretty' } : undefined,
       // Nunca registrar credenciales ni material criptográfico.
       redact: [
-        'req.headers.authorization', 'req.headers["x-api-key"]',
+        'req.headers.authorization', 'req.headers["x-api-key"]', 'req.headers["x-operator-key"]',
         'req.body.sol_pass', 'req.body.certificado', 'req.body.cert_password',
         'req.body.client_secret',
       ],
@@ -57,6 +58,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(companyRoutes, { prefix: '/api/v1' });
+  await app.register(operatorRoutes, { prefix: '/api/v1' });
   await app.register(saleRoutes('invoice'), { prefix: '/api/v1/invoice' });
   await app.register(saleRoutes('note'), { prefix: '/api/v1/note' });
   await app.register(summaryRoutes('summary'), { prefix: '/api/v1/summary' });

@@ -8,6 +8,7 @@ import {
   type AdminDocumentRow, type SunatState,
 } from '../../repositories/documents.ts';
 import { findTenant, listTenants, loadSecrets, toPublic } from '../../repositories/tenants.ts';
+import { listOperators } from '../../repositories/operators.ts';
 import { emitirRetPer, emitirVenta } from '../../services/emitter.ts';
 import { getStorage } from '../../storage/index.ts';
 import { getQueue, redisEnabled } from '../../queue/index.ts';
@@ -87,14 +88,19 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
   }, async (req, reply) => {
     try {
       const f = filtros.parse(req.query);
-      const [resumen, tenants, resumenes] = await Promise.all([
+      const [resumen, tenants, resumenes, operators] = await Promise.all([
         resumenAdmin({ tenantId: f.tenant_id, desde: f.desde, hasta: f.hasta, state: f.state as SunatState | undefined }),
         listTenants(),
         listarResumenesAdmin(f.tenant_id, 15),
+        listOperators(),
       ]);
+      const operatorName = new Map(operators.map((o) => [o.operator_id, o.nombre]));
       return reply.send({
         ...resumen,
-        empresas: tenants.map(toPublic),
+        empresas: tenants.map((t) => ({
+          ...toPublic(t),
+          operator: t.operator_id ? { operator_id: t.operator_id, nombre: operatorName.get(t.operator_id) ?? null } : null,
+        })),
         resumenes: resumenes.map((r) => ({
           id: r.id,
           tipo: r.tipo,

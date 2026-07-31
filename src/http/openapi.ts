@@ -34,16 +34,22 @@ procesa la CDR y produce la representación impresa en PDF con código QR.
 
 | Ámbito | Cabecera | Uso |
 | --- | --- | --- |
-| Plataforma | \`X-API-Key\` | Alta y administración de empresas, backoffice. |
+| Plataforma (super-admin) | \`X-API-Key\` | Crear operadores, gestionar sus claves, reasignar empresas, backoffice. |
+| Operador (PMS/ERP) | \`X-Operator-Key\` | Alta y administración de las **empresas que le pertenecen**. |
 | Empresa | \`Authorization: Bearer <token>\` | Emisión y consulta de comprobantes. |
 
-El token de empresa se obtiene al crear la empresa (\`POST /companies\`) y no expira.
+El operador obtiene su API key (\`skop_...\`) al crearla con \`POST /operators/:id/keys\` (super-admin) y la
+entrega al sistema externo. La empresa obtiene su token al ser registrada (\`POST /companies\`) y no expira.
+
+Rotación de la clave de un operador: \`POST /operators/:id/keys\` (nueva) → distribuir →
+\`DELETE /operators/:id/keys/:old\` (revocar la vieja). Sin downtime ni coordinación con otros operadores.
 
 ### Flujo típico
 
-1. \`POST /companies\` — registrar la empresa con su certificado y clave SOL.
-2. \`POST /invoice/send\` — emitir. La respuesta trae la CDR de SUNAT.
-3. \`GET /documents\` — consultar el histórico y descargar XML, CDR y PDF.
+1. \`POST /operators\` (super-admin) — crear el operador y emitirle una API key.
+2. \`POST /companies\` (operador) — registrar la empresa con su certificado y clave SOL.
+3. \`POST /invoice/send\` (empresa) — emitir. La respuesta trae la CDR de SUNAT.
+4. \`GET /documents\` — consultar el histórico y descargar XML, CDR y PDF.
 
 Para no bloquear el flujo de venta use \`/invoice/enqueue\`: el comprobante se
 procesa en segundo plano con reintentos (1, 5 y 15 minutos) y el resultado se
@@ -68,7 +74,8 @@ export const openapiPlugin = fp(async (app: FastifyInstance) => {
       },
       servers: [{ url: '/api/v1', description: 'Base de la API' }],
       tags: [
-        { name: 'empresa', description: 'Alta y administración de empresas emisoras (requiere X-API-Key).' },
+        { name: 'empresa', description: 'Alta y administración de empresas emisoras (requiere API key de operador).' },
+        { name: 'operadores', description: 'Gestión de operadores y sus claves, reasignación de empresas (requiere X-API-Key de super-admin).' },
         { name: 'factura', description: 'Facturas (01) y Boletas de Venta (03).' },
         { name: 'nota', description: 'Notas de Crédito (07) y de Débito (08).' },
         { name: 'resumen', description: 'Resumen Diario de Boletas (RC). Asíncrono: devuelve un ticket.' },
@@ -78,12 +85,13 @@ export const openapiPlugin = fp(async (app: FastifyInstance) => {
         { name: 'percepcion', description: 'Comprobante de Percepción (40).' },
         { name: 'documentos', description: 'Histórico de comprobantes y descarga de artefactos.' },
         { name: 'ejemplos', description: 'Payloads de ejemplo listos para copiar (público).' },
-        { name: 'backoffice', description: 'Monitoreo y operación (requiere X-API-Key).' },
+        { name: 'backoffice', description: 'Monitoreo y operación (requiere X-API-Key de super-admin).' },
       ],
       components: {
         securitySchemes: {
           bearerAuth: { type: 'http', scheme: 'bearer', description: 'Token de la empresa emisora.' },
-          apiKey: { type: 'apiKey', name: 'x-api-key', in: 'header', description: 'Clave maestra de la plataforma.' },
+          apiKey: { type: 'apiKey', name: 'x-api-key', in: 'header', description: 'Clave maestra de la plataforma (super-admin).' },
+          operatorKey: { type: 'apiKey', name: 'x-operator-key', in: 'header', description: 'API key de operador (skop_...).' },
         },
       },
     },

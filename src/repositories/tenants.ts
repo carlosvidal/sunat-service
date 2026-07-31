@@ -23,6 +23,7 @@ export interface TenantRow {
   webhook_url: string | null;
   webhook_secret: string | null;
   activo: boolean;
+  operator_id: string | null;
 }
 
 export interface TenantInput {
@@ -41,6 +42,8 @@ export interface TenantInput {
   ambiente: Ambiente;
   webhookUrl?: string;
   webhookSecret?: string;
+  /** Operador al que pertenece la empresa (alta). Opcional: operadores huérfanos. */
+  operatorId?: string | null;
 }
 
 /** Datos públicos de una empresa (nunca incluye secretos). */
@@ -60,6 +63,7 @@ export function toPublic(row: TenantRow) {
     },
     webhook_url: row.webhook_url,
     activo: row.activo,
+    operator_id: row.operator_id,
   };
 }
 
@@ -91,8 +95,8 @@ export async function upsertTenant(input: TenantInput): Promise<TenantRow> {
         tenant_id, ruc, razon_social, nombre_comercial, domicilio_fiscal,
         sol_user, sol_pass_encrypted, cert_blob_path, cert_password_encrypted,
         cert_valid_to, cert_subject, client_id_encrypted, client_secret_encrypted,
-        ambiente, webhook_url, webhook_secret
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        ambiente, webhook_url, webhook_secret, operator_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      ON CONFLICT (tenant_id) DO UPDATE SET
         ruc = EXCLUDED.ruc,
         razon_social = EXCLUDED.razon_social,
@@ -110,6 +114,9 @@ export async function upsertTenant(input: TenantInput): Promise<TenantRow> {
         webhook_url = EXCLUDED.webhook_url,
         webhook_secret = EXCLUDED.webhook_secret,
         updated_at = NOW()
+        -- operator_id NO se sobrescribe aquí: se preserva el existente para
+        -- evitar que un operador "robe" una empresa mandando un tenant_id ajeno.
+        -- La reasignación intencional se hace por ruta de super-admin.
      RETURNING *`,
     [
       input.tenantId,
@@ -128,6 +135,7 @@ export async function upsertTenant(input: TenantInput): Promise<TenantRow> {
       input.ambiente,
       input.webhookUrl ?? null,
       input.webhookSecret ?? null,
+      input.operatorId ?? null,
     ],
   );
   return rows[0]!;
@@ -145,6 +153,15 @@ export async function findTenantByRuc(ruc: string): Promise<TenantRow | null> {
 
 export async function listTenants(): Promise<TenantRow[]> {
   const { rows } = await query<TenantRow>('SELECT * FROM tenant_sunat_profiles ORDER BY created_at DESC');
+  return rows;
+}
+
+/** Empresas que pertenecen a un operador (incluye las huérfanas si operatorId es null). */
+export async function listTenantsByOperator(operatorId: string): Promise<TenantRow[]> {
+  const { rows } = await query<TenantRow>(
+    'SELECT * FROM tenant_sunat_profiles WHERE operator_id = $1 ORDER BY created_at DESC',
+    [operatorId],
+  );
   return rows;
 }
 

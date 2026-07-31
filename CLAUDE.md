@@ -85,6 +85,26 @@ de 1, 5 y 15 minutos.
 AES-256-GCM (`src/security/secrets.ts`); el `.pfx` se guarda cifrado en el storage y
 se descifra **por job**, en memoria, sin cachearse entre tenants (`loadSecrets`).
 
+**Autenticación: tres niveles (multi-operador).** No hay una sola `MASTER_API_KEY`
+para administrar empresas: la gestión está repartida en tres ámbitos
+(`src/http/auth.ts`):
+
+| Ámbito | Decorador | Cabecera | Rutas |
+| --- | --- | --- | --- |
+| Super-admin (plataforma) | `requireMasterKey` | `X-API-Key` | `/operators/*`, `/companies/:id/reassign`, `/admin/*` |
+| Operador (PMS/ERP) | `requireOperator` | `X-Operator-Key` | `/companies/*` |
+| Empresa | `requireTenant` | `Authorization: Bearer` | emisión y documentos |
+
+- Un **operador** posee empresas (1:N) y se autentica con API keys opacas `skop_...`
+  hasheadas con scrypt (`src/security/apikey.ts`, `src/repositories/operators.ts`).
+  Cada operador puede tener **varias claves activas** → rotación con solapamiento.
+- `POST /companies` asocia la empresa al operador autenticado; el `ON CONFLICT`
+  **preserva** `operator_id` para evitar robo de empresas por `tenant_id` ajeno (la
+  validación previa en el handler devuelve 409).
+- Reasignar una empresa entre operadores es privilegio del super-admin
+  (`POST /companies/:id/reassign`) y **no** cambia el JWT del tenant: el ERP del
+  cliente final sigue emitiendo sin interrupción.
+
 **Dos servicios SOAP distintos.** Facturas, boletas, notas, resúmenes y bajas van a
 `cpe`; retenciones y percepciones a `otros` (`endpointFor` en `src/sunat/endpoints.ts`).
 Las guías no usan SOAP sino la API REST con OAuth2.
@@ -112,8 +132,10 @@ discrepancia, manda lo que responde SUNAT.
 ## Probar contra SUNAT
 
 BETA acepta el RUC `20000000001` con usuario y clave `MODDATOS`. Para armar el
-entorno: `POST /companies/certificate/free` genera un certificado autofirmado válido
-solo en BETA, y `POST /companies` registra la empresa y devuelve el token.
+entorno: primero crea un operador y su API key con `POST /operators` +
+`POST /operators/:id/keys` (super-admin), luego `POST /companies/certificate/free`
+genera un certificado autofirmado válido solo en BETA, y `POST /companies`
+(registrada con la API key del operador) registra la empresa y devuelve el token.
 
 Los payloads de todos los casos ya verificados están en `GET /api/v1/examples`
 (definidos en `src/http/examples.ts`).

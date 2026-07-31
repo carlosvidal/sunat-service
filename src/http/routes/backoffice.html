@@ -184,7 +184,7 @@
 
     <section id="tab-empresas" class="panel" hidden>
       <div class="table-wrap"><table>
-        <thead><tr><th>Empresa</th><th>RUC</th><th>Ambiente</th><th>Usuario SOL</th><th>Certificado vence</th><th>Webhook</th></tr></thead>
+        <thead><tr><th>Empresa</th><th>RUC</th><th>Operador</th><th>Ambiente</th><th>Usuario SOL</th><th>Certificado vence</th><th>Webhook</th></tr></thead>
         <tbody id="emp-body"></tbody>
       </table></div>
     </section>
@@ -288,11 +288,12 @@ async function cargarOverview() {
 
   $('emp-body').innerHTML = data.empresas.map((e) => `<tr>
       <td>${esc(e.razon_social)}</td><td>${esc(e.ruc)}</td>
+      <td>${e.operator ? esc(e.operator.nombre || e.operator.operator_id) : '<span class="badge b-warn">huérfana</span>'}</td>
       <td>${badge(e.ambiente === 'produccion' ? 'PRODUCCIÓN' : 'BETA')}</td>
       <td>${esc(e.sol_user)}</td>
       <td>${fecha(e.certificado?.valido_hasta)} ${e.certificado?.vencido ? '<span class="badge b-err">vencido</span>' : ''}</td>
       <td class="muted">${esc(e.webhook_url || '—')}</td>
-    </tr>`).join('') || '<tr><td colspan="6" class="empty">Sin empresas registradas</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="7" class="empty">Sin empresas registradas</td></tr>';
 
   $('res-body').innerHTML = data.resumenes.map((r) => `<tr>
       <td>${esc(r.tipo)}</td><td>${esc(r.nombre_archivo)}</td><td>${fecha(r.fecha_referencia)}</td>

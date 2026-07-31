@@ -94,3 +94,38 @@ CREATE TABLE IF NOT EXISTS summary_documents (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (tenant_id, nombre_archivo)
 );
+
+-- Operadores (PMS, ERP, ecommerce) que administran empresas emisoras.
+-- Cada operador tiene sus propias API keys (varias activas => rotación con
+-- solapamiento) y sólo ve las empresas que le pertenecen (relación 1:N).
+CREATE TABLE IF NOT EXISTS operators (
+    operator_id    VARCHAR(64)  PRIMARY KEY,
+    nombre         VARCHAR(255) NOT NULL,
+    activo         BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+-- Claves API de cada operador. El hash se guarda con scrypt; la clave en claro
+-- sólo se devuelve una vez, al crearla. `key_prefix` (los primeros caracteres
+-- de la clave) permite acotar la búsqueda sin exponer el material.
+CREATE TABLE IF NOT EXISTS operator_api_keys (
+    id              UUID         PRIMARY KEY,
+    operator_id     VARCHAR(64)  NOT NULL REFERENCES operators(operator_id) ON DELETE CASCADE,
+    key_prefix      VARCHAR(16)  NOT NULL,
+    key_hash        TEXT         NOT NULL,
+    label           VARCHAR(120),
+    last_used_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    revoked_at      TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_oak_prefix ON operator_api_keys (key_prefix);
+
+-- Propiedad 1:N: cada empresa pertenece a un operador. SET NULL al borrar el
+-- operador: la empresa queda huérfana (reasignable por super-admin) sin perder
+-- su historial de comprobantes.
+ALTER TABLE tenant_sunat_profiles
+    ADD COLUMN IF NOT EXISTS operator_id VARCHAR(64) REFERENCES operators(operator_id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_tsp_operator ON tenant_sunat_profiles (operator_id);
