@@ -1,4 +1,6 @@
+# msgpackr-extract es un acelerador nativo opcional de msgpackr (dependencia de
+# BullMQ). No aporta nada aquí y pnpm 11 aborta la instalación si su build queda
+# pendiente de aprobación, así que se deniega explícitamente: msgpackr funciona
+# igual en JavaScript puro.
 allowBuilds:
-  esbuild: set this to true or false
-  msgpackr-extract: set this to true or false
-onlyBuiltDependencies: esbuild,msgpackr-extract
+  msgpackr-extract: false

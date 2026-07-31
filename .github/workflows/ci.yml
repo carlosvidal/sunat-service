@@ -56,7 +56,6 @@ jobs:
       - name: Aplicar migración (dos veces: debe ser idempotente)
         env:
           DATABASE_URL: postgres://sunat:sunat@localhost:5432/sunat
-          SECRETS_MASTER_KEY: ${{ secrets.CI_SECRETS_KEY || 'Y2ktb25seS10ZXN0LWtleS0zMi1ieXRlcy1sb25nISE=' }}
         run: |
           pnpm migrate
           pnpm migrate

@@ -23,13 +23,6 @@
   ],
   "author": "Carlos Vidal",
   "license": "MIT",
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "^11.5.1",
-      "onFail": "download"
-    }
-  },
   "type": "module",
   "dependencies": {
     "@fastify/jwt": "^10.2.1",
@@ -69,5 +62,6 @@
     "type": "git",
     "url": "git+https://github.com/carlosvidal/sunat-service.git"
   },
-  "homepage": "https://carlosvidal.github.io/sunat-docs/"
+  "homepage": "https://carlosvidal.github.io/sunat-docs/",
+  "packageManager": "pnpm@11.5.1"
 }
