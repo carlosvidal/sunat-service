@@ -45,13 +45,48 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Paso de despliegue: completar según dónde corra el servicio.
-  # Ejemplos habituales:
-  #   - VPS con Docker:   ssh + docker compose pull && docker compose up -d
-  #   - Kubernetes:       kubectl set image deployment/sunat-service …
-  #   - Fly.io / Render:  su acción oficial, apuntando a la imagen publicada
-  #
-  # Recordar levantar DOS procesos con la misma imagen:
-  #   API     -> node dist/index.js
-  #   worker  -> node dist/worker.js
-  # y ejecutar `node dist/index.js --migrate` antes de arrancar tras un cambio de esquema.
+  desplegar:
+    needs: imagen
+    runs-on: ubuntu-latest
+    # Solo la rama principal despliega; las etiquetas solo publican imagen.
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Preparar la clave de despliegue
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Desplegar
+        env:
+          DESTINO: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          # Token efímero del propio job: la imagen sigue privada y el servidor
+          # no guarda ninguna credencial permanente del registro.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ssh -o BatchMode=yes "$DESTINO" "cd /opt/sunat-service \
+            && echo '$GHCR_TOKEN' | docker login ghcr.io -u ${{ github.actor }} --password-stdin \
+            && docker compose pull \
+            && docker compose run --rm --no-deps api node dist/index.js --migrate \
+            && docker compose up -d \
+            && docker logout ghcr.io \
+            && docker image prune -f"
+
+      - name: Verificar que quedó sano
+        run: |
+          for intento in $(seq 1 10); do
+            estado=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://sunat.hotelpms.work/health || true)
+            if [ "$estado" = "200" ]; then
+              echo "Servicio sano tras el despliegue."
+              curl -s https://sunat.hotelpms.work/health
+              exit 0
+            fi
+            echo "Intento $intento: respuesta $estado; reintentando..."
+            sleep 10
+          done
+          echo "El servicio no respondió 200 tras el despliegue."
+          exit 1
