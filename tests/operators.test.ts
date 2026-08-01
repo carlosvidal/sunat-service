@@ -39,7 +39,7 @@ function companyBody(tenantId: string, ruc: string, cert: string, pass: string) 
 }
 
 describe('operadores (integración)', function () {
-  setupIntegrationSuite(ctx);
+  setupIntegrationSuite(ctx, 'operators');
 
   // Si no hay Postgres, saltamos toda la suite para no romper el CI.
   before(function () {

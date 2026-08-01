@@ -129,3 +129,17 @@ ALTER TABLE tenant_sunat_profiles
     ADD COLUMN IF NOT EXISTS operator_id VARCHAR(64) REFERENCES operators(operator_id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_tsp_operator ON tenant_sunat_profiles (operator_id);
+
+-- Idempotencia de emisión. La clave la genera el cliente (típicamente un UUID) y
+-- viaja en la cabecera `Idempotency-Key`. Un reintento por red inestable así no
+-- emite un comprobante duplicado: choca contra el índice y se devuelve el
+-- resultado anterior.
+--
+-- El índice es PARCIAL a propósito: los emisores que no envían la cabecera dejan
+-- la columna en NULL y siguen funcionando sin cambios.
+ALTER TABLE electronic_documents
+    ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(64);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_idempotency
+    ON electronic_documents (tenant_id, idempotency_key)
+    WHERE idempotency_key IS NOT NULL;

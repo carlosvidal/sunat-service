@@ -118,7 +118,7 @@ export async function emitirVenta(
   tenant: TenantRow,
   secrets: TenantSecrets,
   input: InvoiceInput | NoteInput,
-  options: { generarPdf?: boolean; documentId?: string } = {},
+  options: { generarPdf?: boolean; documentId?: string; idempotencyKey?: string } = {},
 ): Promise<EmisionResult> {
   const storage = getStorage();
   const explicito = input.correlativo ? Number(input.correlativo) : undefined;
@@ -144,6 +144,7 @@ export async function emitirVenta(
       montoTotal: preview.mtoImpVenta ?? 0,
       state: 'PENDIENTE',
       payload: input,
+      idempotencyKey: options.idempotencyKey,
     });
   }
 

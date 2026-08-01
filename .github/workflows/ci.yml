@@ -9,9 +9,10 @@ jobs:
   verificar:
     runs-on: ubuntu-latest
     services:
-      # Los tests de integración (tests/operators.test.ts) usan Postgres en
-      # localhost:5434; aquí lo publicamos en ese puerto para que corran de
-      # verdad. Sin BD, la suite se salta sin fallar (skip condicional).
+      # Los tests de integración (operators.test.ts, idempotency.test.ts) usan
+      # Postgres en localhost:5434; aquí lo publicamos en ese puerto para que
+      # corran de verdad. Cada suite crea su propia base para poder correr en
+      # paralelo. Sin BD, se saltan sin fallar (skip condicional).
       postgres:
         image: postgres:16-alpine
         env:

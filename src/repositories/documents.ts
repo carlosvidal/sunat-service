@@ -30,6 +30,7 @@ export interface DocumentRow {
   payload: unknown;
   retry_count: number;
   last_error: string | null;
+  idempotency_key: string | null;
   created_at: Date;
 }
 
@@ -103,6 +104,9 @@ export interface CreateDocumentInput {
   montoTotal: number;
   state: SunatState;
   payload: unknown;
+  /** Clave de idempotencia del cliente. Si se omite, la columna queda NULL y el
+   *  índice único parcial no aplica. */
+  idempotencyKey?: string;
 }
 
 export async function crearDocumento(input: CreateDocumentInput): Promise<DocumentRow> {
@@ -111,14 +115,15 @@ export async function crearDocumento(input: CreateDocumentInput): Promise<Docume
     `INSERT INTO electronic_documents (
         id, tenant_id, tipo_comprobante, serie, correlativo, nombre_archivo, fecha_emision,
         cliente_tipo_doc, cliente_num_doc, cliente_razon_social, moneda, monto_total,
-        sunat_state, payload
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        sunat_state, payload, idempotency_key
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
       id, input.tenantId, input.tipoComprobante, input.serie, input.correlativo,
       input.nombreArchivo, input.fechaEmision, input.clienteTipoDoc ?? null,
       input.clienteNumDoc ?? null, input.clienteRazonSocial ?? null, input.moneda,
       input.montoTotal, input.state, JSON.stringify(input.payload),
+      input.idempotencyKey ?? null,
     ],
   );
   return rows[0]!;
@@ -176,6 +181,23 @@ export async function buscarDocumento(
   return rows[0] ?? null;
 }
 
+/**
+ * Busca un documento por la clave de idempotencia del cliente. Es la consulta
+ * previa de `/send`: si devuelve algo, la emisión ya ocurrió (o está en curso) y
+ * no hay que volver a reservar correlativo.
+ */
+export async function buscarPorIdempotencyKey(
+  tenantId: string,
+  idempotencyKey: string,
+): Promise<DocumentRow | null> {
+  const { rows } = await query<DocumentRow>(
+    `SELECT * FROM electronic_documents
+     WHERE tenant_id = $1 AND idempotency_key = $2`,
+    [tenantId, idempotencyKey],
+  );
+  return rows[0] ?? null;
+}
+
 export async function obtenerDocumento(id: string): Promise<DocumentRow | null> {
   const { rows } = await query<DocumentRow>('SELECT * FROM electronic_documents WHERE id = $1', [id]);
   return rows[0] ?? null;
@@ -211,7 +233,13 @@ export async function listarDocumentos(
   return rows;
 }
 
-/** Reserva correlativo y crea el documento en una sola transacción. */
+/**
+ * Reserva correlativo y crea el documento en una sola transacción.
+ *
+ * Que ambas cosas compartan transacción es lo que hace segura la idempotencia:
+ * si el INSERT choca contra `uq_documents_idempotency`, el rollback deshace
+ * también el avance de `document_series`. El correlativo no se quema.
+ */
 export async function crearConCorrelativo(
   input: Omit<CreateDocumentInput, 'correlativo' | 'nombreArchivo'> & {
     correlativo?: number;
@@ -245,14 +273,15 @@ export async function crearConCorrelativo(
       `INSERT INTO electronic_documents (
           id, tenant_id, tipo_comprobante, serie, correlativo, nombre_archivo, fecha_emision,
           cliente_tipo_doc, cliente_num_doc, cliente_razon_social, moneda, monto_total,
-          sunat_state, payload
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          sunat_state, payload, idempotency_key
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         id, input.tenantId, input.tipoComprobante, input.serie, correlativo,
         input.nombreArchivo(correlativo), input.fechaEmision, input.clienteTipoDoc ?? null,
         input.clienteNumDoc ?? null, input.clienteRazonSocial ?? null, input.moneda,
         input.montoTotal, input.state, JSON.stringify(input.payload),
+        input.idempotencyKey ?? null,
       ],
     );
     return rows[0]!;
