@@ -7,7 +7,11 @@ import { getQueue, redisEnabled } from '../../queue/index.ts';
 import { tenantCtx } from '../auth.ts';
 import { sendError } from '../errors.ts';
 import { z } from 'zod';
-import { buscarDocumento, siguienteCorrelativo } from '../../repositories/documents.ts';
+import {
+  buscarDocumento, buscarPorIdempotencyKey, siguienteCorrelativo,
+  type DocumentRow,
+} from '../../repositories/documents.ts';
+import { getStorage } from '../../storage/index.ts';
 import { jsonSchema, respuesta } from '../openapi.ts';
 import {
   EJEMPLO_BOLETA, EJEMPLO_FACTURA, EJEMPLO_FACTURA_CREDITO, EJEMPLO_FACTURA_DETRACCION,
@@ -37,6 +41,46 @@ const META = {
   },
 } as const;
 
+/** Longitud máxima de la clave de idempotencia; coincide con la columna. */
+const IDEMPOTENCY_KEY_MAX = 64;
+
+/**
+ * Estados en los que la emisión aún no concluyó. Con clave de idempotencia
+ * repetida se responde 409 (no un replay) porque todavía no hay resultado que
+ * devolver: o hay otra petición en vuelo, o el intento quedó huérfano y toca
+ * reconciliar contra SUNAT con `GET /status`.
+ */
+const ESTADOS_EN_VUELO = new Set(['PENDIENTE', 'EN_COLA_SUNAT']);
+
+/**
+ * Reconstruye la respuesta de `/send` a partir de un documento ya emitido, para
+ * devolver el mismo resultado ante un reintento con la misma clave.
+ * El XML no se guarda en la base: se lee del storage por su ruta.
+ */
+async function respuestaReplay(row: DocumentRow): Promise<Record<string, unknown>> {
+  const xml = row.xml_path ? (await getStorage().get(row.xml_path)).toString('utf8') : '';
+  const accepted = row.sunat_state === 'ACEPTADO' || row.sunat_state === 'ACEPTADO_CON_OBSERVACIONES';
+  return {
+    documentId: row.id,
+    xml,
+    hash: row.digest_value ?? '',
+    state: row.sunat_state,
+    sunatResponse: row.sunat_code !== null
+      ? {
+          success: accepted,
+          cdrResponse: {
+            id: `${row.serie}-${row.correlativo}`,
+            code: row.sunat_code,
+            description: row.sunat_description,
+            notes: row.sunat_notes ?? [],
+            accepted,
+          },
+        }
+      : { success: false, error: { code: '0', message: row.last_error ?? 'Sin respuesta de SUNAT' } },
+    files: { xml: row.xml_path ?? undefined, cdr: row.cdr_path ?? undefined, pdf: row.pdf_path ?? undefined },
+  };
+}
+
 /**
  * Rutas de emisión de Facturas/Boletas (`/invoice/*`) y Notas (`/note/*`).
  * La forma de los payloads sigue el formato de Greenter.
@@ -61,13 +105,28 @@ export function saleRoutes(kind: Kind) {
         description:
           'Reserva el correlativo, genera el XML UBL 2.1, lo firma, lo envía a SUNAT y devuelve la CDR. ' +
           'Si se omite `correlativo` se toma el siguiente de la serie de forma atómica. ' +
-          'La respuesta incluye el XML firmado y las rutas de los artefactos almacenados (XML, CDR y PDF).',
+          'La respuesta incluye el XML firmado y las rutas de los artefactos almacenados (XML, CDR y PDF).\n\n' +
+          'Envíe la cabecera `Idempotency-Key` para que un reintento por red inestable no emita un ' +
+          'comprobante duplicado: la segunda llamada devuelve el resultado de la primera con la ' +
+          'cabecera `Idempotent-Replay: true`, sin consumir otro correlativo.',
         security: seguridad,
+        headers: {
+          type: 'object',
+          properties: {
+            'idempotency-key': {
+              type: 'string',
+              maxLength: IDEMPOTENCY_KEY_MAX,
+              description:
+                'Clave única generada por el cliente (típicamente un UUID). Única por empresa. ' +
+                'Opcional: si se omite, no hay protección contra duplicados.',
+            },
+          },
+        },
         body: cuerpo,
         response: {
           200: respuesta('Comprobante procesado. Revise `state` y `sunatResponse.cdrResponse.code`.'),
           400: respuesta('Payload inválido o totales incoherentes.'),
-          409: respuesta('La serie y correlativo ya fueron registrados.'),
+          409: respuesta('La serie y correlativo ya fueron registrados, o hay una emisión en curso con esa clave de idempotencia.'),
           422: respuesta('SUNAT rechazó el comprobante.'),
           503: respuesta('SUNAT no está disponible: reintente más tarde.'),
         },
@@ -75,8 +134,34 @@ export function saleRoutes(kind: Kind) {
     }, async (req, reply) => {
       try {
         const { tenant, secrets } = tenantCtx(req);
+        const cabecera = req.headers['idempotency-key'];
+        const idempotencyKey = typeof cabecera === 'string' && cabecera.length > 0
+          ? cabecera.slice(0, IDEMPOTENCY_KEY_MAX)
+          : undefined;
+
+        if (idempotencyKey) {
+          const previo = await buscarPorIdempotencyKey(tenant.tenant_id, idempotencyKey);
+          if (previo && ESTADOS_EN_VUELO.has(previo.sunat_state)) {
+            // Se devuelve la identidad del documento para que el llamante pueda
+            // reconciliar con `GET /status` o `GET /documents/:id` en vez de
+            // reintentar a ciegas.
+            return reply.code(409).send({
+              code: 409,
+              message: 'Hay una emisión en curso con esa clave de idempotencia',
+              documentId: previo.id,
+              serie: previo.serie,
+              correlativo: Number(previo.correlativo),
+              state: previo.sunat_state,
+              retryable: true,
+            });
+          }
+          if (previo) {
+            return reply.header('idempotent-replay', 'true').send(await respuestaReplay(previo));
+          }
+        }
+
         const input = schema.parse(req.body);
-        const result = await emitirVenta(tenant, await secrets(), input);
+        const result = await emitirVenta(tenant, await secrets(), input, { idempotencyKey });
         return reply.send({
           documentId: result.documentId,
           xml: result.xml,

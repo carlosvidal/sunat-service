@@ -28,8 +28,18 @@ export function sendError(reply: FastifyReply, err: unknown): FastifyReply {
     return reply.code(503).send({ code: 503, message: err.message, retryable: true });
   }
   const message = (err as Error)?.message ?? 'Error interno';
-  // Violación de unicidad de (tenant, tipo, serie, correlativo).
   if ((err as { code?: string }).code === '23505') {
+    // Hay dos índices únicos que pueden saltar aquí y significan cosas distintas.
+    // Sin discriminar, una carrera de idempotencia se reportaría como un choque
+    // de correlativo, que es falso y despista al integrador.
+    if ((err as { constraint?: string }).constraint === 'uq_documents_idempotency') {
+      return reply.code(409).send({
+        code: 409,
+        message: 'Hay una emisión en curso con esa clave de idempotencia',
+        retryable: true,
+      });
+    }
+    // Violación de unicidad de (tenant, tipo, serie, correlativo).
     return reply.code(409).send({ code: 409, message: 'El comprobante ya fue registrado con esa serie y correlativo' });
   }
   reply.log.error({ err }, 'error no manejado');

@@ -12,9 +12,20 @@
 import { after, before, beforeEach } from 'node:test';
 import type { FastifyInstance } from 'fastify';
 
-const TEST_DB = process.env.SUNAT_TEST_DB ?? 'sunat_test';
 const PG_ADMIN_URL = process.env.SUNAT_TEST_ADMIN_URL ?? 'postgres://sunat:sunat@localhost:5434/postgres';
-export const TEST_DATABASE_URL = `postgres://sunat:sunat@localhost:5434/${TEST_DB}`;
+
+/**
+ * Nombre de la BD de una suite. `node --test` corre cada archivo en su propio
+ * proceso y en paralelo, así que dos suites que compartieran base se pisarían:
+ * el DROP DATABASE de una tumbaría la de la otra a media ejecución. Cada suite
+ * pide la suya.
+ */
+function dbNameFor(suite: string): string {
+  const base = process.env.SUNAT_TEST_DB ?? 'sunat_test';
+  return suite ? `${base}_${suite.replace(/[^a-z0-9_]/gi, '_').toLowerCase()}` : base;
+}
+
+const urlFor = (db: string) => `postgres://sunat:sunat@localhost:5434/${db}`;
 
 export interface IntegrationCtx {
   app: FastifyInstance | null;
@@ -37,18 +48,18 @@ async function postgresDisponible(): Promise<boolean> {
 }
 
 /** Crea la BD de test limpia y aplica el esquema. Llamar una vez por suite. */
-async function resetTestDatabase(): Promise<void> {
+async function resetTestDatabase(db: string): Promise<void> {
   const { Client } = await import('pg');
   const admin = new Client(PG_ADMIN_URL);
   await admin.connect();
   try {
-    await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB}`);
-    await admin.query(`CREATE DATABASE ${TEST_DB}`);
+    await admin.query(`DROP DATABASE IF EXISTS ${db}`);
+    await admin.query(`CREATE DATABASE ${db}`);
   } finally {
     await admin.end();
   }
   // Importar pool/migrate tras apuntar env a la BD de test.
-  process.env.DATABASE_URL = TEST_DATABASE_URL;
+  process.env.DATABASE_URL = urlFor(db);
   process.env.DATABASE_SSL = 'false';
   const { migrate, closePool } = await import('../src/db/pool.ts');
   await migrate();
@@ -60,7 +71,8 @@ async function resetTestDatabase(): Promise<void> {
  * Si no hay Postgres disponible, marca `ctx.disponible = false` y los tests
  * deben saltarse (útil en CI sin servicio de BD en el job de pruebas).
  */
-export function setupIntegrationSuite(ctx: IntegrationCtx): void {
+export function setupIntegrationSuite(ctx: IntegrationCtx, suite = ''): void {
+  const db = dbNameFor(suite);
   before(async function () {
     // Env debe fijarse antes del primer import de config/app.
     process.env.NODE_ENV = 'test';
@@ -75,7 +87,7 @@ export function setupIntegrationSuite(ctx: IntegrationCtx): void {
       // No hay BD: la suite se saltará. No instanciamos la app.
       return;
     }
-    await resetTestDatabase();
+    await resetTestDatabase(db);
     const { buildApp } = await import('../src/app.ts');
     ctx.app = await buildApp();
     ctx.masterKey = process.env.MASTER_API_KEY!;
