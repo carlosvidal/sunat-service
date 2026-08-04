@@ -2,6 +2,7 @@ import { query } from '../db/pool.ts';
 import { getVault } from '../security/secrets.ts';
 import { getStorage, certificateKey } from '../storage/index.ts';
 import { loadCertificate, type CertificateMaterial } from '../security/certificate.ts';
+import { InvalidTenantInputError } from '../http/errors.ts';
 import type { Ambiente } from '../sunat/endpoints.ts';
 import type { AddressInput, CompanyInput } from '../domain/schemas.ts';
 
@@ -84,7 +85,7 @@ export async function upsertTenant(input: TenantInput): Promise<TenantRow> {
   // Se valida el certificado antes de persistirlo: si no abre, no sirve.
   const material = loadCertificate(certBuffer, input.certPassword);
   if (material.ruc && material.ruc !== input.ruc) {
-    throw new Error(`El certificado pertenece al RUC ${material.ruc}, no a ${input.ruc}`);
+    throw new InvalidTenantInputError('ruc_mismatch', `El certificado pertenece al RUC ${material.ruc}, no a ${input.ruc}`);
   }
 
   const certPath = certificateKey(input.tenantId);

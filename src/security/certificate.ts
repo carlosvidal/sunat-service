@@ -1,4 +1,5 @@
 import forge from 'node-forge';
+import { InvalidTenantInputError } from '../http/errors.ts';
 
 export interface CertificateMaterial {
   privateKeyPem: string;
@@ -40,19 +41,28 @@ function fromCertificate(cert: forge.pki.Certificate, privateKeyPem: string): Ce
  * Todo ocurre en memoria: nunca se escribe el material criptográfico a disco.
  */
 export function parsePfx(pfx: Buffer, password: string): CertificateMaterial {
-  const asn1 = forge.asn1.fromDer(forge.util.createBuffer(pfx.toString('binary')));
-  const p12 = forge.pkcs12.pkcs12FromAsn1(asn1, false, password);
+  // node-forge puede lanzar excepciones propias (no normalizadas) al parsear el
+  // DER o abrir el PKCS#12 (contraseña incorrecta, DER corrupto, bytes basura).
+  // Se envuelve todo el bloque de apertura para que cualquier fallo se traduzca
+  // a un 400 claro, no a un 500 opaco.
+  let p12;
+  try {
+    const asn1 = forge.asn1.fromDer(forge.util.createBuffer(pfx.toString('binary')));
+    p12 = forge.pkcs12.pkcs12FromAsn1(asn1, false, password);
+  } catch {
+    throw new InvalidTenantInputError('invalid_certificate', 'No se pudo abrir el certificado: contraseña incorrecta o archivo corrupto');
+  }
 
   const keyBags = {
     ...p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag }),
     ...p12.getBags({ bagType: forge.pki.oids.keyBag }),
   };
   const key = Object.values(keyBags).flat().find((b) => b?.key)?.key;
-  if (!key) throw new Error('El certificado no contiene una llave privada (¿contraseña incorrecta?)');
+  if (!key) throw new InvalidTenantInputError('invalid_certificate', 'El certificado no contiene una llave privada (¿contraseña incorrecta?)');
 
   const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
   const certs = Object.values(certBags).flat().map((b) => b?.cert).filter((c): c is forge.pki.Certificate => !!c);
-  if (certs.length === 0) throw new Error('El archivo PKCS#12 no contiene certificados');
+  if (certs.length === 0) throw new InvalidTenantInputError('invalid_certificate', 'El archivo PKCS#12 no contiene certificados');
 
   // Con cadena de confianza el primer bag es la hoja; se valida contra la llave.
   const publicKeyPem = forge.pki.publicKeyToPem(forge.pki.setRsaPublicKey((key as forge.pki.rsa.PrivateKey).n, (key as forge.pki.rsa.PrivateKey).e));
@@ -65,8 +75,8 @@ export function parsePfx(pfx: Buffer, password: string): CertificateMaterial {
 export function parsePem(pem: string): CertificateMaterial {
   const certMatch = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/.exec(pem);
   const keyMatch = /-----BEGIN (?:RSA )?PRIVATE KEY-----[\s\S]+?-----END (?:RSA )?PRIVATE KEY-----/.exec(pem);
-  if (!certMatch) throw new Error('El PEM no contiene un certificado');
-  if (!keyMatch) throw new Error('El PEM no contiene una llave privada');
+  if (!certMatch) throw new InvalidTenantInputError('invalid_certificate', 'El PEM no contiene un certificado');
+  if (!keyMatch) throw new InvalidTenantInputError('invalid_certificate', 'El PEM no contiene una llave privada');
   const cert = forge.pki.certificateFromPem(certMatch[0]);
   return fromCertificate(cert, keyMatch[0]);
 }

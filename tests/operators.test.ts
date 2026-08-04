@@ -188,4 +188,46 @@ describe('operadores (integración)', function () {
     const res = await ctx.app.inject({ method: 'GET', url: '/api/v1/companies', headers: { authorization: `Bearer ${key}` } });
     assert.equal(res.statusCode, 200);
   });
+
+  // --- Validación de certificado y datos de empresa (400, no 500) -------------
+
+  test('alta con RUC declarado distinto al del certificado → 400 ruc_mismatch', async () => {
+    const { key } = await createOperatorWithKey(ctx.app, ctx.masterKey, 'pms-a');
+    const { cert, pass } = await selfSignedPfx('20000000001');
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/companies',
+      headers: { 'x-operator-key': key },
+      payload: companyBody('tenant-ruc', '20599999999', cert, pass), // RUC ≠ del certificado
+    });
+    assert.equal(res.statusCode, 400);
+    const body = res.json() as { code: string; message: string };
+    assert.equal(body.code, 'ruc_mismatch');
+    assert.match(body.message, /pertenece al RUC 20000000001/);
+  });
+
+  test('alta con contraseña de certificado incorrecta → 400 invalid_certificate', async () => {
+    const { key } = await createOperatorWithKey(ctx.app, ctx.masterKey, 'pms-a');
+    const { cert } = await selfSignedPfx('20000000001');
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/companies',
+      headers: { 'x-operator-key': key },
+      payload: companyBody('tenant-pass', '20000000001', cert, 'contraseña-incorrecta'),
+    });
+    assert.equal(res.statusCode, 400);
+    assert.equal((res.json() as { code: string }).code, 'invalid_certificate');
+  });
+
+  test('alta con certificado corrupto (basura) → 400 invalid_certificate', async () => {
+    const { key } = await createOperatorWithKey(ctx.app, ctx.masterKey, 'pms-a');
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/companies',
+      headers: { 'x-operator-key': key },
+      payload: companyBody('tenant-basura', '20000000001', Buffer.from('esto-no-es-un-pfx').toString('base64'), 'x'),
+    });
+    assert.equal(res.statusCode, 400);
+    assert.equal((res.json() as { code: string }).code, 'invalid_certificate');
+  });
 });
